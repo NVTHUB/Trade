@@ -1,0 +1,192 @@
+
+-- 1. GIAI ĐOẠN CHUẨN BỊ (UI & MODULES)
+-- ==========================================
+repeat task.wait(1) until game:IsLoaded()
+    and game:GetService("ReplicatedStorage"):FindFirstChild("ClientModules")
+    and game:GetService("ReplicatedStorage").ClientModules:FindFirstChild("Core")
+
+local RS = game:GetService("ReplicatedStorage")
+local API = RS:WaitForChild("API")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local ClientData = require(RS.ClientModules.Core.ClientData)
+local Router = require(RS.ClientModules.Core.RouterClient.RouterClient)
+
+-- Chống treo máy (Anti AFK)
+task.spawn(function()
+    local vu = game:GetService("VirtualUser")
+    LocalPlayer.Idled:Connect(function()
+        vu:CaptureController()
+        vu:ClickButton2(Vector2.new())
+    end)
+end)
+
+-- Tắt hội thoại phiền phức
+if PlayerGui:FindFirstChild("DialogApp") then PlayerGui.DialogApp.Enabled = false end
+
+-- GIAI ĐOẠN: GIẢI MÃ REMOTE (DEHASH)
+local function dehash()
+    pcall(function()
+        local mapping = debug.getupvalue(Router.init, 7)
+        for name, remote in pairs(mapping) do
+            if typeof(remote) == "Instance" then remote.Name = name end
+        end
+    end)
+end
+dehash()
+print("[Dehash] Đã hoàn thành")
+
+-- GIAI ĐOẠN: VÀO GAME & CHỌN ĐỘI
+local function enter_the_game()
+    local args = {[1] = "Parents", [2] = {["source_for_logging"] = "intro_sequence"}}
+    API:WaitForChild("TeamAPI/ChooseTeam"):InvokeServer(unpack(args))
+    task.wait(1)
+
+    local ui_stuff = require(RS.Fsys).load("UIManager")
+    ui_stuff.set_app_visibility("MainMenuApp", false)
+    ui_stuff.set_app_visibility("NewsApp", false)
+    ui_stuff.set_app_visibility("DialogApp", false)
+
+    task.wait(2)
+    API:WaitForChild("DailyLoginAPI/ClaimDailyReward"):InvokeServer()
+end
+enter_the_game()
+
+-- Đợi nhân vật xuất hiện hoàn toàn
+repeat task.wait() until LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+print("✅ Đã vào game thành công")
+
+-- ==========================================
+-- 3. GIAI ĐOẠN: KIỂM TRA / LẤY BẰNG GIAO DỊCH
+-- ==========================================
+local function checkTradeLicense()
+    if ClientData.get("has_trade_license") ~= true then
+        print("📜 Đang tự động lấy Bằng giao dịch...")
+        pcall(function()
+            API:WaitForChild("SettingsAPI/SetBooleanFlag"):FireServer("has_talked_to_trade_quest_npc", true)
+            task.wait(0.5)
+            API:WaitForChild("TradeAPI/BeginQuiz"):FireServer()
+            task.wait(1)
+            local quiz = ClientData.get("trade_license_quiz_manager")["quiz"]
+            for _, qdata in pairs(quiz) do
+                API:WaitForChild("TradeAPI/AnswerQuizQuestion"):FireServer(qdata["answer"])
+                task.wait(0.7)
+            end
+        end)
+        print("✅ Đã mở khóa Bằng giao dịch!")
+        task.wait(1)
+    else
+        print("✅ Đã có Bằng giao dịch.")
+    end
+end
+checkTradeLicense()
+
+-- ==========================================
+-- 4. HỆ THỐNG AUTO TRADE (CHÍNH)
+-- ==========================================
+
+-- FUNCTION A: DÀNH CHO ACC NHẬN
+local function FunctionA()
+    print("💎 CHẾ ĐỘ: ACC NHẬN ĐANG CHẠY")
+    API:WaitForChild("TradeAPI/TradeRequestReceived").OnClientEvent:Connect(function(sender)
+        if not sender then return end
+        pcall(function() 
+            API["PlayerProfileAPI/RefreshProfile"]:InvokeServer(sender) 
+            task.wait(0.2)
+            API["TradeAPI/AcceptOrDeclineTradeRequest"]:InvokeServer(sender, true) 
+        end)
+    end)
+
+    task.spawn(function()
+        while task.wait(0.1) do
+            pcall(function() API["TradeAPI/AcceptNegotiation"]:FireServer() end)
+            pcall(function() API["TradeAPI/ConfirmTrade"]:FireServer() end)
+        end
+    end)
+end
+
+-- FUNCTION B: DÀNH CHO ACC GỬI
+local function FunctionB()
+    print("🚀 CHẾ ĐỘ: ACC GỬI ĐANG CHẠY")
+    local tradeRemotes = { send = nil, add = nil, accept = nil, confirm = nil }
+
+    local function RefreshTradeRemotes()
+        local success, upvalues = pcall(function() return debug.getupvalue(Router.init, 7) end)
+        if success then
+            tradeRemotes.send = upvalues["TradeAPI/SendTradeRequest"]
+            tradeRemotes.add = upvalues["TradeAPI/AddItemToOffer"]
+            tradeRemotes.accept = upvalues["TradeAPI/AcceptNegotiation"]
+            tradeRemotes.confirm = upvalues["TradeAPI/ConfirmTrade"]
+        end
+    end
+
+    -- Luồng 1: Tự động gửi yêu cầu Trade
+    task.spawn(function()
+        while true do
+            RefreshTradeRemotes()
+            local data = ClientData.get_data()[LocalPlayer.Name]
+            local hasItems = false
+            if data and data.inventory then
+                for _, cat in pairs({"pets", "gifts"}) do
+                    for _, info in pairs(data.inventory[cat] or {}) do
+                        if table.find(getgenv().Config.item_to_trade, info.kind) then
+                            hasItems = true; break
+                        end
+                    end
+                end
+            end
+
+            if hasItems and tradeRemotes.send then
+                local targets = getgenv().Config.username
+                local targetName = (type(targets) == "table") and targets[math.random(1, #targets)] or targets
+                local target = Players:FindFirstChild(targetName)
+                if target and target ~= LocalPlayer then
+                    pcall(function() tradeRemotes.send:FireServer(target) end)
+                    task.wait(5) 
+                end
+            end
+            task.wait(2)
+        end
+    end)
+
+    -- Luồng 2: Tự động bỏ đồ (0.1s) và xác nhận (0.5s)
+    task.spawn(function()
+        while true do
+            local data = ClientData.get_data()[LocalPlayer.Name]
+            if data and data.inventory and tradeRemotes.add then
+                for _, cat in pairs({"pets", "gifts"}) do
+                    for id, info in pairs(data.inventory[cat] or {}) do
+                        if table.find(getgenv().Config.item_to_trade, info.kind) then
+                            pcall(function() tradeRemotes.add:FireServer(id) end)
+                        end
+                    end
+                end
+                pcall(function() 
+                    tradeRemotes.accept:FireServer()
+                    tradeRemotes.confirm:FireServer()
+                end)
+            end
+            task.wait(2)
+        end
+    end)
+end
+
+-- ==========================================
+-- 5. KÍCH HOẠT DỰA TRÊN TÊN NHÂN VẬT
+-- ==========================================
+local isTarget = false
+local targets = getgenv().Config["username"]
+
+if type(targets) == "table" then
+    if table.find(targets, LocalPlayer.Name) then isTarget = true end
+elseif targets == LocalPlayer.Name then
+    isTarget = true
+end
+
+print("🌟 Khởi động hoàn tất — Hệ thống Auto Trade đang chạy 🌟")
+if isTarget then
+    FunctionA()
+else
+    FunctionB()
+end
