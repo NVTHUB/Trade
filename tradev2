@@ -2,14 +2,14 @@
 -- 1. CONFIGURATION
 -- ==========================================
 getgenv().Config = {
-    ["username"] = {"KhangBac2006", "User_Phu_2"}, -- Danh sách Acc Nhận
+    ["username"] = {"HoKi3nD3m", "User_Phu_2"}, 
     ["item_to_trade"] = {"winter_2025_cozy_mistletroll", "winter_2025_gift_box"},
     ["AgeFilter"] = {
         Normal = true,
-        AgeNormal = {1},
+        AgeNormal = {1, 2, 3, 4, 5, 6},
         Neon = true,
-        AgeNeon = {6},
-        Mega = false,
+        AgeNeon = {1, 2, 3, 4, 5, 6},
+        Mega = true,
     }
 }
 
@@ -60,7 +60,7 @@ local function enter_game()
 end
 enter_game()
 
--- Tự động lấy Bằng giao dịch (Trade License)
+-- Tự động lấy Bằng giao dịch
 local function checkTradeLicense()
     if ClientData.get("has_trade_license") ~= true then
         pcall(function()
@@ -146,10 +146,16 @@ local function FunctionB()
             local hasItem = false
             
             if data and data.inventory then
-                for _, cat in pairs({"pets", "gifts"}) do
-                    for _, info in pairs(data.inventory[cat] or {}) do
+                -- Kiểm tra Pet có thỏa filter không
+                for _, info in pairs(data.inventory.pets or {}) do
+                    if table.find(getgenv().Config.item_to_trade, info.kind) and shouldTradePet(info) then
+                        hasItem = true; break
+                    end
+                end
+                -- Nếu chưa thấy pet, kiểm tra Gift (Gift không cần filter tuổi)
+                if not hasItem then
+                    for _, info in pairs(data.inventory.gifts or {}) do
                         if table.find(getgenv().Config.item_to_trade, info.kind) then
-                            if cat == "pets" and not shouldTradePet(info) then continue end
                             hasItem = true; break
                         end
                     end
@@ -178,29 +184,29 @@ local function FunctionB()
 
             if addItem and data and data.inventory then
                 local count = 0
-                -- Add Pets
+                -- 1. Add Pets (có lọc)
                 for id, info in pairs(data.inventory.pets or {}) do
                     if shouldTradePet(info) then
                         pcall(function() addItem:FireServer(id) end)
                         count = count + 1
-                        if count >= 18 then break end
                     end
+                    if count >= 18 then break end
                 end
-                -- Add Gifts
+                -- 2. Add Gifts (không lọc tuổi)
                 if count < 18 then
                     for id, info in pairs(data.inventory.gifts or {}) do
                         if table.find(getgenv().Config.item_to_trade, info.kind) then
                             pcall(function() addItem:FireServer(id) end)
                             count = count + 1
-                            if count >= 18 then break end
                         end
+                        if count >= 18 then break end
                     end
                 end
-                -- Confirm
+                -- 3. Confirm
                 pcall(function()
                     remotes["TradeAPI/AcceptNegotiation"]:FireServer()
                     remotes["TradeAPI/ConfirmTrade"]:FireServer()
-                end)0
+                end)
             end
             task.wait(0.6)
         end
