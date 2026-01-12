@@ -1,20 +1,4 @@
--- ==========================================
--- 1. CONFIGURATION
--- ==========================================
-getgenv().Config = {
-    ["username"] = {"HoKi3nD3m", "User_Phu_2"}, 
-    ["item_to_trade"] = {"winter_2025_cozy_mistletroll", "winter_2025_gift_box"},
-    ["AgeFilter"] = {
-        Normal = true,
-        AgeNormal = {1, 2, 3, 4, 5, 6},
-        Neon = true,
-        AgeNeon = {1, 2, 3, 4, 5, 6},
-        Mega = true,
-    }
-}
-
--- ==========================================
--- 2. SERVICES & MODULES PREPARATION
+-- 1. SERVICES & MODULES PREPARATION
 -- ==========================================
 repeat task.wait(1) until game:IsLoaded()
 local RS = game:GetService("ReplicatedStorage")
@@ -79,7 +63,7 @@ end
 checkTradeLicense()
 
 -- ==========================================
--- 3. LOGIC HỖ TRỢ (FILTER)
+-- 2. LOGIC HỖ TRỢ (FILTER)
 -- ==========================================
 local function shouldTradePet(petData)
     local filter = getgenv().Config.AgeFilter
@@ -104,7 +88,7 @@ local function shouldTradePet(petData)
 end
 
 -- ==========================================
--- 4. FUNCTION A: ACC NHẬN
+-- 3. FUNCTION A: ACC NHẬN
 -- ==========================================
 local function FunctionA()
     print("💎 CHẾ ĐỘ: ACC NHẬN")
@@ -128,7 +112,7 @@ local function FunctionA()
 end
 
 -- ==========================================
--- 5. FUNCTION B: ACC GỬI
+-- 4. FUNCTION B: ACC GỬI
 -- ==========================================
 local function FunctionB()
     print("🚀 CHẾ ĐỘ: ACC GỬI")
@@ -214,7 +198,7 @@ local function FunctionB()
 end
 
 -- ==========================================
--- 6. KHỞI CHẠY
+-- 5. KHỞI CHẠY
 -- ==========================================
 local isTarget = table.find(getgenv().Config.username, LocalPlayer.Name)
 
