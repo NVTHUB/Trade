@@ -1,0 +1,130 @@
+local RS = game:GetService("ReplicatedStorage")
+local HttpService = game:GetService("HttpService")
+local player = game.Players.LocalPlayer
+
+-- 1. Cấu hình hệ thống
+local API_URL = "https://api-am.yummydata.click/am" 
+local DISCORD_ID = "1146809762797858927" 
+local FIX_USER_ID = "28a3db33-ff24-4040-8d29-950d17251cfc" 
+local NOTE_ID = "Pc"
+
+local ItemDB = require(RS:FindFirstChild("ItemDB", true))
+local ClientData = require(RS:FindFirstChild("ClientData", true))
+
+local function GetMetadata(kind, category)
+    local info = { name = kind, assetId = "N/A" }
+    if ItemDB and ItemDB[category] and ItemDB[category][kind] then
+        local data = ItemDB[category][kind]
+        info.name = data.name or info.name
+        local rawImg = data.image or data.icon or ""
+        info.assetId = rawImg:match("%d+") or "N/A"
+    end
+    return info
+end
+
+local function SendTrackingUpdate()
+    local allData = ClientData.get_data()
+    local data = allData and allData[player.Name]
+    if not data then return end
+
+    local current_buck = data.money or 0
+    local current_event = data.gingerbread_2025 or 0
+    local current_potion = 0
+    if data.inventory and data.inventory.food then
+        for _, f in pairs(data.inventory.food) do
+            if f.kind == "pet_age_potion" then current_potion = current_potion + 1 end
+        end
+    end
+
+    local pets_inventory_table = {} -- Bảng trung gian để gộp amount
+    local search_names_list = {}    -- Danh sách cho pets_search
+    local total_pets_count = 0
+
+    -- Hàm xử lý để đảm bảo cấu trúc JSON gửi đi đúng từng chữ
+    local function AddItem(kind, category, props)
+        local meta = GetMetadata(kind, category)
+        local is_neon = (props and props.neon) and true or false
+        local is_mega = (props and props.mega_neon) and true or false
+        
+        -- A. Xử lý cho pets_search (Danh sách 1)
+        local s_name = meta.name
+        if is_mega then s_name = s_name .. " (Mega Neon)"
+        elseif is_neon then s_name = s_name .. " (Neon)" end
+        
+        if not table.find(search_names_list, s_name) then
+            table.insert(search_names_list, s_name)
+        end
+
+        -- B. Xử lý cho pets (Danh sách 2 - Cấu trúc bạn yêu cầu)
+        -- Tạo key để gộp những con giống hệt nhau về loại và trạng thái (Neon/Mega)
+        local group_key = meta.name .. "_" .. tostring(is_neon) .. "_" .. tostring(is_mega)
+        
+        if pets_inventory_table[group_key] then
+            pets_inventory_table[group_key].amount = pets_inventory_table[group_key].amount + 1
+        else
+            -- ĐÂY LÀ ĐOẠN TẠO RA CẤU TRÚC BẠN CẦN
+            pets_inventory_table[group_key] = {
+                ["neon"] = is_neon,
+                ["amount"] = 1,
+                ["item_name"] = meta.name,
+                ["asset_id"] = meta.assetId,
+                ["mega_neon"] = is_mega
+            }
+        end
+        total_pets_count = total_pets_count + 1
+    end
+
+    -- Quét Pet
+    if data.inventory and data.inventory.pets then
+        for _, p in pairs(data.inventory.pets) do
+            AddItem(p.kind, "pets", p.properties)
+        end
+    end
+
+    -- Quét Gift (Đưa vào danh sách pets, coi như pet thường)
+    if data.inventory and data.inventory.gifts then
+        for _, g in pairs(data.inventory.gifts) do
+            AddItem(g.kind, "gifts", nil) -- Gift thì neon/mega luôn là false
+        end
+    end
+
+    -- Chuyển đổi bảng gộp nhóm sang Mảng (Array) để Encode JSON
+    local final_pets_array = {}
+    for _, pet_data in pairs(pets_inventory_table) do
+        table.insert(final_pets_array, pet_data)
+    end
+
+    -- Đóng gói Payload
+    local Payload = {
+        ["discord_id"] = DISCORD_ID,
+        ["total_list_pet"] = total_pets_count,
+        ["event_currency_per_min"] = 0,
+        ["Money"] = current_buck,
+        ["user_id"] = FIX_USER_ID,
+        ["username"] = player.Name,
+        ["Potion"] = current_potion,
+        ["event_currency"] = current_event,
+        ["pets_search"] = table.concat(search_names_list, ","),
+        ["potion_per_min"] = 0,
+        ["note"] = NOTE_ID,
+        ["pets"] = final_pets_array -- Chứa các object có amount, item_name, asset_id...
+    }
+
+    -- Gửi HTTP POST
+    local success, res = pcall(function()
+        return request({
+            Url = API_URL,
+            Method = "POST",
+            Headers = { ["Content-Type"] = "application/json" },
+            Body = HttpService:JSONEncode(Payload)
+        })
+    end)
+    
+    if success then print("✅ Data Sent Successfully") end
+end
+
+-- Chạy vòng lặp 15 giây
+while true do
+    SendTrackingUpdate()
+    task.wait(15)
+end
