@@ -4,8 +4,8 @@ local player = game.Players.LocalPlayer
 
 -- 1. Cấu hình hệ thống
 local API_URL = "https://api-am.yummydata.click/am" 
-local DISCORD_ID = "1146809762797858927" 
-local FIX_USER_ID = "28a3db33-ff24-4040-8d29-950d17251cfc" 
+local DISCORD_ID = "831976161596407819" 
+local FIX_USER_ID = "69d6d110-526d-47d2-a2c2-a54b8fbf74f2" 
 local NOTE_ID = "Pc"
 
 local ItemDB = require(RS:FindFirstChild("ItemDB", true))
