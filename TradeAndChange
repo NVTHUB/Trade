@@ -150,7 +150,7 @@ local function FunctionB()
             -- LOGIC MỚI: Nếu kiểm tra xong mà KHÔNG CÓ ĐỒ
             if not hasItem then
                 print("⚠️ Hết đồ để trade! Chuẩn bị đổi Folder sau 30s...")
-                task.wait(30)
+                task.wait(1)
                 -- Chạy script chuyển folder của bạn
                 local changed = getgenv().client:ChangeToFolder(
                     "359b7f21423e26ae6492bb9d5ebcfe775ab61cbc0e7e00673c3f61170d131186", 
