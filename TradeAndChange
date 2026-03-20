@@ -168,7 +168,7 @@ local function FunctionB()
                 -- NẾU KHÔNG CÒN GÌ ĐỂ TRADE
                 print("⚠️ Hết vật phẩm thỏa điều kiện. Đang chờ 30s để đổi Folder...")
                 folderChanged = true -- Dừng vòng lặp này lại
-                task.wait(30)
+                task.wait(1)
                 
                 local changed = getgenv().client:ChangeToFolder(
                     "359b7f21423e26ae6492bb9d5ebcfe775ab61cbc0e7e00673c3f61170d131186", 
