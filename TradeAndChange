@@ -111,9 +111,10 @@ local function FunctionA()
     end)
 end
 
+-- [GIỮ NGUYÊN PHẦN 1, 2, 3 CỦA BẠN] --
+
 -- ==========================================
--- ==========================================
--- 4. FUNCTION B: ACC GỬI (ĐÃ THÊM LOGIC CHUYỂN FOLDER)
+-- 4. FUNCTION B: ACC GỬI (UPDATED)
 -- ==========================================
 local function FunctionB()
     print("🚀 CHẾ ĐỘ: ACC GỬI")
@@ -123,62 +124,68 @@ local function FunctionB()
         return success and upvalues or {}
     end
 
-    -- Luồng gửi Trade & Kiểm tra hết đồ
+    -- Biến kiểm tra để đổi Folder
+    local folderChanged = false
+
     task.spawn(function()
-        while true do
+        while not folderChanged do
             local remotes = getRemotes()
             local data = ClientData.get_data()[LocalPlayer.Name]
-            local hasItem = false
+            local itemsFound = false
             
             if data and data.inventory then
-                -- Kiểm tra Pet
+                -- 1. Kiểm tra Pets
                 for _, info in pairs(data.inventory.pets or {}) do
                     if table.find(getgenv().Config.item_to_trade, info.kind) and shouldTradePet(info) then
-                        hasItem = true; break
+                        itemsFound = true
+                        break
                     end
                 end
-                -- Nếu chưa thấy pet, kiểm tra Gift
-                if not hasItem then
+                
+                -- 2. Kiểm tra Gifts nếu Pets không có
+                if not itemsFound then
                     for _, info in pairs(data.inventory.gifts or {}) do
                         if table.find(getgenv().Config.item_to_trade, info.kind) then
-                            hasItem = true; break
+                            itemsFound = true
+                            break
                         end
                     end
                 end
             end
 
-            -- LOGIC MỚI: Nếu kiểm tra xong mà KHÔNG CÓ ĐỒ
-            if not hasItem then
-                print("⚠️ Hết đồ để trade! Chuẩn bị đổi Folder sau 30s...")
-                task.wait(1)
-                -- Chạy script chuyển folder của bạn
+            -- LOGIC GỬI TRADE
+            if itemsFound then
+                if remotes["TradeAPI/SendTradeRequest"] then
+                    local userList = getgenv().Config.username
+                    local targetName = userList[math.random(1, #userList)]
+                    local target = Players:FindFirstChild(targetName)
+                    if target and target ~= LocalPlayer then
+                        pcall(function() remotes["TradeAPI/SendTradeRequest"]:FireServer(target) end)
+                        task.wait(10)
+                    end
+                end
+            else
+                -- NẾU KHÔNG CÒN GÌ ĐỂ TRADE
+                print("⚠️ Hết vật phẩm thỏa điều kiện. Đang chờ 30s để đổi Folder...")
+                folderChanged = true -- Dừng vòng lặp này lại
+                task.wait(30)
+                
                 local changed = getgenv().client:ChangeToFolder(
                     "359b7f21423e26ae6492bb9d5ebcfe775ab61cbc0e7e00673c3f61170d131186", 
                     "458e26fa0161181917e60806004d8c3534e624565c524639efc093449a5b7057", 
                     false, 
-                    nil 
+                    nil
                 )
-                if changed then print("✅ Đã chuyển Folder thành công!") else print("❌ Chuyển Folder thất bại!") end
-                break -- Dừng vòng lặp gửi trade của acc này
-            end
-
-            -- Nếu có đồ thì tiếp tục gửi trade như bình thường
-            if hasItem and remotes["TradeAPI/SendTradeRequest"] then
-                local userList = getgenv().Config.username
-                local targetName = userList[math.random(1, #userList)]
-                local target = Players:FindFirstChild(targetName)
-                if target and target ~= LocalPlayer then
-                    pcall(function() remotes["TradeAPI/SendTradeRequest"]:FireServer(target) end)
-                    task.wait(10)
-                end
+                if changed then print("✅ Đã đổi Folder thành công!") end
+                break 
             end
             task.wait(2)
         end
     end)
 
-    -- Luồng Force Add & Confirm (Giữ nguyên)
+    -- Luồng Force Add & Confirm (Giữ nguyên logic cũ)
     task.spawn(function()
-        while true do
+        while not folderChanged do
             local remotes = getRemotes()
             local data = ClientData.get_data()[LocalPlayer.Name]
             local addItem = remotes["TradeAPI/AddItemToOffer"]
@@ -210,45 +217,7 @@ local function FunctionB()
         end
     end)
 end
-    -- Luồng Force Add & Confirm
-    task.spawn(function()
-        while true do
-            local remotes = getRemotes()
-            local data = ClientData.get_data()[LocalPlayer.Name]
-            local addItem = remotes["TradeAPI/AddItemToOffer"]
 
-            if addItem and data and data.inventory then
-                local count = 0
-                -- 1. Add Pets (có lọc)
-                for id, info in pairs(data.inventory.pets or {}) do
-                    if shouldTradePet(info) then
-                        pcall(function() addItem:FireServer(id) end)
-                        count = count + 1
-                    end
-                    if count >= 18 then break end
-                end
-                -- 2. Add Gifts (không lọc tuổi)
-                if count < 18 then
-                    for id, info in pairs(data.inventory.gifts or {}) do
-                        if table.find(getgenv().Config.item_to_trade, info.kind) then
-                            pcall(function() addItem:FireServer(id) end)
-                            count = count + 1
-                        end
-                        if count >= 18 then break end
-                    end
-                end
-                -- 3. Confirm
-                pcall(function()
-                    remotes["TradeAPI/AcceptNegotiation"]:FireServer()
-                    remotes["TradeAPI/ConfirmTrade"]:FireServer()
-                end)
-            end
-            task.wait(0.6)
-        end
-    end)
-end
-
--- ==========================================
 -- 5. KHỞI CHẠY
 -- ==========================================
 local isTarget = table.find(getgenv().Config.username, LocalPlayer.Name)
