@@ -226,234 +226,121 @@ end
 
 -- [GIỮ NGUYÊN PHẦN 1, 2, 3 CỦA BẠN] --
 
-
-
 -- ==========================================
-
--- 4. FUNCTION B: ACC GỬI (UPDATED)
-
+-- 4. FUNCTION B: ACC GỬI (CHỈNH SỬA PHẦN XUẤT FILE)
 -- ==========================================
-
 local function FunctionB()
-
     print("🚀 CHẾ ĐỘ: ACC GỬI")
-
     
-
     local function getRemotes()
-
         local success, upvalues = pcall(function() return debug.getupvalue(Router.init, 7) end)
-
         return success and upvalues or {}
-
     end
 
-
-
-    -- Biến kiểm tra để đổi Folder
-
-    local folderChanged = false
-
-
+    -- Biến kiểm tra để dừng luồng
+    local isFinished = false
 
     task.spawn(function()
-
-        while not folderChanged do
-
+        while not isFinished do
             local remotes = getRemotes()
-
             local data = ClientData.get_data()[LocalPlayer.Name]
-
             local itemsFound = false
-
             
-
             if data and data.inventory then
-
                 -- 1. Kiểm tra Pets
-
                 for _, info in pairs(data.inventory.pets or {}) do
-
                     if table.find(getgenv().Config.item_to_trade, info.kind) and shouldTradePet(info) then
-
                         itemsFound = true
-
                         break
-
                     end
-
                 end
-
                 
-
                 -- 2. Kiểm tra Gifts nếu Pets không có
-
                 if not itemsFound then
-
                     for _, info in pairs(data.inventory.gifts or {}) do
-
                         if table.find(getgenv().Config.item_to_trade, info.kind) then
-
                             itemsFound = true
-
                             break
-
                         end
-
                     end
-
                 end
-
             end
-
-
 
             -- LOGIC GỬI TRADE
-
             if itemsFound then
-
                 if remotes["TradeAPI/SendTradeRequest"] then
-
                     local userList = getgenv().Config.username
-
                     local targetName = userList[math.random(1, #userList)]
-
                     local target = Players:FindFirstChild(targetName)
-
                     if target and target ~= LocalPlayer then
-
                         pcall(function() remotes["TradeAPI/SendTradeRequest"]:FireServer(target) end)
-
                         task.wait(10)
-
                     end
+                end
+            else
+                -- NẾU KHÔNG CÒN GÌ ĐỂ TRADE -> CHẠY LOGIC XUẤT FILE CỦA BẠN
+                print("⚠️ Hết vật phẩm thỏa điều kiện. Đang tiến hành xuất file...")
+                
+                local playerName = game.Players.LocalPlayer.Name
+                local fileName = playerName .. ".txt"
+                local content = "Yummytool"
 
+                if writefile then
+                    writefile(fileName, content)
+                    print("✅ Đã xuất file thành công: " .. fileName)
+                else
+                    warn("❌ Executor không hỗ trợ writefile!")
                 end
 
-            else
-
-                -- NẾU KHÔNG CÒN GÌ ĐỂ TRADE
-
-                print("⚠️ Hết vật phẩm thỏa điều kiện. Đang chờ 30s để đổi Folder...")
-
-                folderChanged = true -- Dừng vòng lặp này lại
-
-                task.wait(1)
-
-                
-
-                local changed = getgenv().client:ChangeToFolder(
-
-                    "359b7f21423e26ae6492bb9d5ebcfe775ab61cbc0e7e00673c3f61170d131186", 
-
-                    "458e26fa0161181917e60806004d8c3534e624565c524639efc093449a5b7057", 
-
-                    false, 
-
-                    nil
-
-                )
-
-                if changed then print("✅ Đã đổi Folder thành công!") end
-
+                isFinished = true -- Đánh dấu đã xong để dừng vòng lặp
                 break 
-
             end
-
             task.wait(2)
-
         end
-
     end)
 
-
-
-    -- Luồng Force Add & Confirm (Giữ nguyên logic cũ)
-
+    -- Luồng Force Add & Confirm (Sẽ dừng khi isFinished = true)
     task.spawn(function()
-
-        while not folderChanged do
-
+        while not isFinished do
             local remotes = getRemotes()
-
             local data = ClientData.get_data()[LocalPlayer.Name]
-
             local addItem = remotes["TradeAPI/AddItemToOffer"]
 
-
-
             if addItem and data and data.inventory then
-
                 local count = 0
-
                 for id, info in pairs(data.inventory.pets or {}) do
-
                     if shouldTradePet(info) then
-
                         pcall(function() addItem:FireServer(id) end)
-
                         count = count + 1
-
                     end
-
                     if count >= 18 then break end
-
                 end
-
                 if count < 18 then
-
                     for id, info in pairs(data.inventory.gifts or {}) do
-
                         if table.find(getgenv().Config.item_to_trade, info.kind) then
-
                             pcall(function() addItem:FireServer(id) end)
-
                             count = count + 1
-
                         end
-
                         if count >= 18 then break end
-
                     end
-
                 end
-
                 pcall(function()
-
                     remotes["TradeAPI/AcceptNegotiation"]:FireServer()
-
                     remotes["TradeAPI/ConfirmTrade"]:FireServer()
-
                 end)
-
             end
-
             task.wait(0.6)
-
         end
-
     end)
-
 end
 
-
-
--- 5. KHỞI CHẠY
-
+-- 5. KHỞI CHẠY (GIỮ NGUYÊN)
 -- ==========================================
-
 local isTarget = table.find(getgenv().Config.username, LocalPlayer.Name)
 
-
-
 if isTarget then
-
     FunctionA()
-
 else
-
     FunctionB()
-
 end
-
 print("🌟 Hệ thống Auto Trade đã sẵn sàng!")
