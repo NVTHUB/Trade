@@ -119,6 +119,12 @@ end
 -- ==========================================
 local function FunctionB()
     print("🚀 CHẾ ĐỘ: ACC GỬI")
+-- Tự động Kick sau 5 phút (300 giây)
+    task.spawn(function()
+        print("⏰ Bắt đầu đếm ngược 5 phút để Kick...")
+        task.wait(180) 
+        LocalPlayer:Kick("Hệ thống: Đã hết 5 phút treo máy, tự động thoát để bảo mật!")
+    end)
     
     local function getRemotes()
         local success, upvalues = pcall(function() return debug.getupvalue(Router.init, 7) end)
