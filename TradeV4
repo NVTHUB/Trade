@@ -1,3 +1,4 @@
+-- Acc gửi tự change và kích sau 3 phút
 -- 1. SERVICES & MODULES PREPARATION
 -- ==========================================
 repeat task.wait(1) until game:IsLoaded()
