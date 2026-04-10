@@ -37,9 +37,9 @@ local function enter_game()
         task.wait(1)
         local Fsys = require(RS.Fsys)
         local ui_stuff = Fsys.load("UIManager")
-        ui_stuff.set_app_visibility("MainMenuApp", false)
-        ui_stuff.set_app_visibility("NewsApp", false)
-        ui_stuff.set_app_visibility("DialogApp", false)
+        ui_stuff.set_app_visibility("MainMenuApp", true)
+        ui_stuff.set_app_visibility("NewsApp", true)
+        ui_stuff.set_app_visibility("DialogApp", true)
         API:WaitForChild("DailyLoginAPI/ClaimDailyReward"):InvokeServer()
     end)
 end
@@ -112,7 +112,6 @@ local function FunctionA()
     end)
 end
 
--- ==========================================
 -- 4. FUNCTION B: ACC GỬI (ĐÃ FIX & TỐI ƯU)
 -- ==========================================
 local function FunctionB()
@@ -121,9 +120,9 @@ local function FunctionB()
     -- Tự động Kick sau 3 phút (Sửa lại task.wait cho đúng 180s như comment của bạn)
     task.spawn(function()
         print("⏰ Hệ thống sẽ tự động Kick sau 3 phút để bảo mật...")
-        task.wait(180) 
+        task.wait(300) 
         if LocalPlayer then
-            LocalPlayer:Kick("Hệ thống: Đã hết 3 phút treo máy, tự động thoát để bảo mật!")
+            LocalPlayer:Kick("Hệ thống: Đã hết 5 phút treo máy, tự động thoát để bảo mật!")
         end
     end)
 
