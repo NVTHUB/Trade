@@ -112,46 +112,42 @@ local function FunctionA()
     end)
 end
 
--- [GIỮ NGUYÊN PHẦN 1, 2, 3 CỦA BẠN] --
-
 -- ==========================================
--- ==========================================
--- 4. FUNCTION B: ACC GỬI (UPDATED)
+-- 4. FUNCTION B: ACC GỬI (ĐÃ FIX & TỐI ƯU)
 -- ==========================================
 local function FunctionB()
     print("🚀 CHẾ ĐỘ: ACC GỬI")
--- Tự động Kick sau 5 phút (300 giây)
+
+    -- Tự động Kick sau 3 phút (Sửa lại task.wait cho đúng 180s như comment của bạn)
     task.spawn(function()
-        print("⏰ Bắt đầu đếm ngược 5 phút để Kick...")
+        print("⏰ Hệ thống sẽ tự động Kick sau 3 phút để bảo mật...")
         task.wait(180) 
-        LocalPlayer:Kick("Hệ thống: Đã hết 5 phút treo máy, tự động thoát để bảo mật!")
+        if LocalPlayer then
+            LocalPlayer:Kick("Hệ thống: Đã hết 3 phút treo máy, tự động thoát để bảo mật!")
+        end
     end)
-    
-    local function getRemotes()
-        local success, upvalues = pcall(function() return debug.getupvalue(Router.init, 7) end)
-        return success and upvalues or {}
-    end
 
     local folderChanged = false
 
+    -- Luồng Kiểm tra & Gửi Trade
     task.spawn(function()
         while not folderChanged do
-            local remotes = getRemotes()
-            local data = ClientData.get_data()[LocalPlayer.Name]
+            -- Sử dụng cách lấy Inventory mới nhất và ổn định nhất
+            local inventory = ClientData.get("inventory")
             local itemsFound = false
             
-            if data and data.inventory then
-                -- 1. Kiểm tra Pets
-                for _, info in pairs(data.inventory.pets or {}) do
-                    if table.find(getgenv().Config.item_to_trade, info.kind) and shouldTradePet(info) then
+            if inventory then
+                -- 1. Kiểm tra Pets thỏa điều kiện Filter
+                for _, info in pairs(inventory.pets or {}) do
+                    if shouldTradePet(info) then
                         itemsFound = true
                         break
                     end
                 end
                 
-                -- 2. Kiểm tra Gifts nếu Pets không có
+                -- 2. Kiểm tra Gifts nếu Pets không còn
                 if not itemsFound then
-                    for _, info in pairs(data.inventory.gifts or {}) do
+                    for _, info in pairs(inventory.gifts or {}) do
                         if table.find(getgenv().Config.item_to_trade, info.kind) then
                             itemsFound = true
                             break
@@ -162,26 +158,29 @@ local function FunctionB()
 
             -- LOGIC GỬI TRADE
             if itemsFound then
-                if remotes["TradeAPI/SendTradeRequest"] then
+                -- Lấy Remote trực tiếp từ ReplicatedStorage (An toàn hơn debug)
+                local sendTrade = API:WaitForChild("TradeAPI/SendTradeRequest", 5)
+                if sendTrade then
                     local userList = getgenv().Config.username
                     local targetName = userList[math.random(1, #userList)]
                     local target = Players:FindFirstChild(targetName)
+                    
                     if target and target ~= LocalPlayer then
-                        pcall(function() remotes["TradeAPI/SendTradeRequest"]:FireServer(target) end)
-                        task.wait(10)
+                        print("📫 Đang gửi yêu cầu giao dịch tới: " .. targetName)
+                        pcall(function() sendTrade:FireServer(target) end)
+                        task.wait(10) -- Chờ đợi phản hồi trade
                     end
                 end
             else
-                -- NẾU KHÔNG CÒN GÌ ĐỂ TRADE -> ĐỔI FOLDER TỪ CONFIG
+                -- LOGIC ĐỔI FOLDER KHI HẾT VẬT PHẨM
                 print("⚠️ Hết vật phẩm thỏa điều kiện. Đang thực hiện đổi Folder...")
                 folderChanged = true 
                 task.wait(1)
                 
-                -- Lấy ID từ Config ở đầu script
                 local fromFolder = getgenv().Config["folder_from"][1]
                 local toFolder = getgenv().Config["folder_to"][1]
 
-                if fromFolder and toFolder then
+                if fromFolder and toFolder and getgenv().client then
                     local success, err = pcall(function()
                         return getgenv().client:ChangeToFolder(fromFolder, toFolder, false, nil)
                     end)
@@ -192,7 +191,7 @@ local function FunctionB()
                         print("❌ Lỗi khi đổi Folder: ", err)
                     end
                 else
-                    print("❌ Lỗi: Không tìm thấy ID Folder trong Config!")
+                    print("❌ Lỗi: Không tìm thấy ID Folder hoặc Client API!")
                 end
                 break 
             end
@@ -200,26 +199,28 @@ local function FunctionB()
         end
     end)
 
-    -- Luồng Force Add & Confirm
+    -- Luồng Tự động thêm đồ (Add Item) & Xác nhận (Confirm)
     task.spawn(function()
         while not folderChanged do
-            local remotes = getRemotes()
-            local data = ClientData.get_data()[LocalPlayer.Name]
-            local addItem = remotes["TradeAPI/AddItemToOffer"]
+            local inventory = ClientData.get("inventory")
+            local addItem = API:WaitForChild("TradeAPI/AddItemToOffer", 5)
+            local acceptNeg = API:WaitForChild("TradeAPI/AcceptNegotiation", 5)
+            local confirmTrade = API:WaitForChild("TradeAPI/ConfirmTrade", 5)
 
-            if addItem and data and data.inventory then
+            if addItem and inventory then
                 local count = 0
-                -- Add Pets
-                for id, info in pairs(data.inventory.pets or {}) do
+                -- Ưu tiên thêm Pets trước
+                for id, info in pairs(inventory.pets or {}) do
                     if shouldTradePet(info) then
                         pcall(function() addItem:FireServer(id) end)
                         count = count + 1
                     end
                     if count >= 18 then break end
                 end
-                -- Add Gifts
+
+                -- Thêm Gifts nếu vẫn còn chỗ (dưới 18 món)
                 if count < 18 then
-                    for id, info in pairs(data.inventory.gifts or {}) do
+                    for id, info in pairs(inventory.gifts or {}) do
                         if table.find(getgenv().Config.item_to_trade, info.kind) then
                             pcall(function() addItem:FireServer(id) end)
                             count = count + 1
@@ -228,12 +229,15 @@ local function FunctionB()
                     end
                 end
                 
-                pcall(function()
-                    remotes["TradeAPI/AcceptNegotiation"]:FireServer()
-                    remotes["TradeAPI/ConfirmTrade"]:FireServer()
-                end)
+                -- Nếu đã thêm đồ thành công, thực hiện Accept và Confirm
+                if count > 0 then
+                    pcall(function()
+                        acceptNeg:FireServer()
+                        confirmTrade:FireServer()
+                    end)
+                end
             end
-            task.wait(0.6)
+            task.wait(0.8) -- Tăng nhẹ delay để server kịp xử lý lệnh add
         end
     end)
 end
