@@ -112,33 +112,29 @@ local function FunctionA()
 end
 
 -- ==========================================
--- 4. FUNCTION B: ACC GỬI
+-- ==========================================
+-- 4. FUNCTION B: ACC GỬI (CHỈ SỬA LOGIC DATA)
 -- ==========================================
 local function FunctionB()
     print("🚀 CHẾ ĐỘ: ACC GỬI")
     
-    local function getRemotes()
-        local success, upvalues = pcall(function() return debug.getupvalue(Router.init, 7) end)
-        return success and upvalues or {}
-    end
-
     -- Luồng gửi Trade
     task.spawn(function()
         while true do
-            local remotes = getRemotes()
-            local data = ClientData.get_data()[LocalPlayer.Name]
+            -- SỬA: Lấy inventory trực tiếp từ ClientData
+            local inventory = ClientData.get("inventory")
             local hasItem = false
             
-            if data and data.inventory then
+            if inventory then
                 -- Kiểm tra Pet có thỏa filter không
-                for _, info in pairs(data.inventory.pets or {}) do
+                for _, info in pairs(inventory.pets or {}) do
                     if table.find(getgenv().Config.item_to_trade, info.kind) and shouldTradePet(info) then
                         hasItem = true; break
                     end
                 end
-                -- Nếu chưa thấy pet, kiểm tra Gift (Gift không cần filter tuổi)
+                -- Nếu chưa thấy pet, kiểm tra Gift
                 if not hasItem then
-                    for _, info in pairs(data.inventory.gifts or {}) do
+                    for _, info in pairs(inventory.gifts or {}) do
                         if table.find(getgenv().Config.item_to_trade, info.kind) then
                             hasItem = true; break
                         end
@@ -146,13 +142,17 @@ local function FunctionB()
                 end
             end
 
-            if hasItem and remotes["TradeAPI/SendTradeRequest"] then
-                local userList = getgenv().Config.username
-                local targetName = userList[math.random(1, #userList)]
-                local target = Players:FindFirstChild(targetName)
-                if target and target ~= LocalPlayer then
-                    pcall(function() remotes["TradeAPI/SendTradeRequest"]:FireServer(target) end)
-                    task.wait(10)
+            -- SỬA: Gọi Remote trực tiếp qua API thay vì dùng bảng remotes từ debug
+            if hasItem then
+                local sendTrade = API:WaitForChild("TradeAPI/SendTradeRequest", 5)
+                if sendTrade then
+                    local userList = getgenv().Config.username
+                    local targetName = userList[math.random(1, #userList)]
+                    local target = Players:FindFirstChild(targetName)
+                    if target and target ~= LocalPlayer then
+                        pcall(function() sendTrade:FireServer(target) end)
+                        task.wait(10)
+                    end
                 end
             end
             task.wait(2)
@@ -162,23 +162,25 @@ local function FunctionB()
     -- Luồng Force Add & Confirm
     task.spawn(function()
         while true do
-            local remotes = getRemotes()
-            local data = ClientData.get_data()[LocalPlayer.Name]
-            local addItem = remotes["TradeAPI/AddItemToOffer"]
+            -- SỬA: Lấy inventory và các Remote trực tiếp
+            local inventory = ClientData.get("inventory")
+            local addItem = API:WaitForChild("TradeAPI/AddItemToOffer", 5)
+            local acceptNeg = API:WaitForChild("TradeAPI/AcceptNegotiation", 5)
+            local confirmTrade = API:WaitForChild("TradeAPI/ConfirmTrade", 5)
 
-            if addItem and data and data.inventory then
+            if addItem and inventory then
                 local count = 0
                 -- 1. Add Pets (có lọc)
-                for id, info in pairs(data.inventory.pets or {}) do
+                for id, info in pairs(inventory.pets or {}) do
                     if shouldTradePet(info) then
                         pcall(function() addItem:FireServer(id) end)
                         count = count + 1
                     end
                     if count >= 18 then break end
                 end
-                -- 2. Add Gifts (không lọc tuổi)
+                -- 2. Add Gifts
                 if count < 18 then
-                    for id, info in pairs(data.inventory.gifts or {}) do
+                    for id, info in pairs(inventory.gifts or {}) do
                         if table.find(getgenv().Config.item_to_trade, info.kind) then
                             pcall(function() addItem:FireServer(id) end)
                             count = count + 1
@@ -187,10 +189,12 @@ local function FunctionB()
                     end
                 end
                 -- 3. Confirm
-                pcall(function()
-                    remotes["TradeAPI/AcceptNegotiation"]:FireServer()
-                    remotes["TradeAPI/ConfirmTrade"]:FireServer()
-                end)
+                if count > 0 then
+                    pcall(function()
+                        acceptNeg:FireServer()
+                        confirmTrade:FireServer()
+                    end)
+                end
             end
             task.wait(0.6)
         end
