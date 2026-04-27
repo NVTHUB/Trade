@@ -184,34 +184,39 @@ local function shouldTradeByAgeFilter(info)
 end
 
 local function shouldTradePetByMode(info)
-    if not info or not info.kind then
-        return false
-    end
-
-    if not itemToTradeFilterPass(info.kind) then
-        return false
-    end
+    if not info or not info.kind then return false end
 
     local tradeMode = string.lower(cfg("Trade_Mode", "AgeFilter"))
     local isMega, isNeon, age = petState(info)
+    local rarity = getPetRarity(info)
 
-    if tradeMode == "allpet" then
-        return true
-    end
-
+    -- 1. MODE: ALLMEGA (Chỉ trade Mega + Neon 6 tuổi, bỏ qua mọi lọc khác)
     if tradeMode == "allmega" then
         return isMega or (isNeon and age == 6)
     end
 
-    if tradeMode == "raritiesfilter" then
-        local allowed = listToLookup(cfg("RaritiesFilter", {}))
-        if next(allowed) == nil then
-            return false
-        end
-        return allowed[getPetRarity(info)] == true
+    -- 2. MODE: ALLPET (Trade hết, bỏ qua mọi lọc khác - Logic giữ 1 con hiếm thấp nhất nằm ở hàm collect)
+    if tradeMode == "allpet" then
+        return true
     end
 
-    return shouldTradeByAgeFilter(info)
+    -- 3. MODE: RARITIESFILTER (Chỉ lọc theo độ hiếm, bỏ qua Age và Item_To_Trade)
+    if tradeMode == "raritiesfilter" then
+        local allowed = listToLookup(cfg("RaritiesFilter", {}))
+        return allowed[rarity] == true
+    end
+
+    -- 4. MODE: AGEFILTER (Mặc định: Lọc theo Item_To_Trade VÀ AgeFilter)
+    if tradeMode == "agefilter" then
+        -- Kiểm tra tên pet trước (Item_To_Trade)
+        if not itemToTradeFilterPass(info.kind) then
+            return false
+        end
+        -- Sau đó kiểm tra độ tuổi (AgeFilter)
+        return shouldTradeByAgeFilter(info)
+    end
+
+    return false
 end
 
 local function collectTradePets(inventory)
