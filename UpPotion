@@ -384,8 +384,8 @@ local function createGUI()
         row.Size = UDim2.new(1, 0, 0, 38)
         row.BackgroundColor3 = Color3.fromRGB(25, 28, 36)
         row.BorderSizePixel = 0
-        row.Font = Enum.Font.Gotham
-        row.TextSize = 12
+        row.Font = Enum.Font.GothamSemibold
+        row.TextSize = 13
         row.TextXAlignment = Enum.TextXAlignment.Left
         row.TextColor3 = Color3.fromRGB(225, 230, 244)
         row.Text = ""
@@ -430,11 +430,11 @@ local function createGUI()
     task.spawn(function()
         while gui.Parent do
             local cfg = g.Config
-            section.Text = "👾 LIVE STATUS | MAIN: " .. (State.mainEnabled and "🟢" or "🔄")
-            LblNeon.Text = string.format("✨  Auto Neon [%s] | Neon : %d | Mega : %d", cfg.AutoNeon.Enabled and " ON 🟢 " or " OFF 🔴 ", State.AutoNeon.Count, State.AutoNeon.MegaCount)
-            LblBuy.Text = string.format("💰  Auto Buy  [%s] | %s", cfg.AutoBuy.Enabled and " ON 🟢 " or " OFF 🔴 ", State.AutoBuy.Message ~= "" and State.AutoBuy.Message or ("Da mua : " .. State.AutoBuy.LastBought))
-            LblOpen.Text = string.format("🎁  Auto Open [%s] | %s", cfg.AutoOpen.Enabled and " ON 🟢 " or " OFF 🔴 ", State.AutoOpen.Message ~= "" and State.AutoOpen.Message or ("Dang Mo : " .. State.AutoOpen.Current))
-            LblPotion.Text = string.format("🧪  Auto Potion [%s] | %s", cfg.AutoPotion.Enabled and " ON 🟢 " or " OFF 🔴 ", State.AutoPotion.Out and "Het Potion" or ("Potion : " .. tostring(State.AutoPotion.Count)))
+            section.Text = "👾 LIVE STATUS | MAIN: " .. (State.mainEnabled and " 🟢 " or " 🔄 ")
+            LblNeon.Text = string.format("✨  Auto Neon [%s] | Neon: %d | Mega: %d", cfg.AutoNeon.Enabled and "ON" or "OFF", State.AutoNeon.Count, State.AutoNeon.MegaCount)
+            LblBuy.Text = string.format("💰  Auto Buy [%s] | %s", cfg.AutoBuy.Enabled and "ON" or "OFF", State.AutoBuy.Message ~= "" and State.AutoBuy.Message or ("Da mua: " .. State.AutoBuy.LastBought))
+            LblOpen.Text = string.format("🎁  Auto Open [%s] | %s", cfg.AutoOpen.Enabled and "ON" or "OFF", State.AutoOpen.Message ~= "" and State.AutoOpen.Message or ("Dang mo: " .. State.AutoOpen.Current))
+            LblPotion.Text = string.format("🧪  Auto Potion [%s] | %s", cfg.AutoPotion.Enabled and "ON" or "OFF", State.AutoPotion.Out and "Het Potion" or ("Potion: " .. tostring(State.AutoPotion.Count)))
             LblPotion.TextColor3 = State.AutoPotion.Out and Color3.fromRGB(255, 120, 120) or Color3.fromRGB(225, 230, 244)
             task.wait(1)
         end
@@ -483,3 +483,5 @@ task.spawn(function()
         task.wait(1)
     end
 end)
+
+
