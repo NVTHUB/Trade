@@ -125,7 +125,7 @@ local function runAutoBuy()
             while true do
                 local before = getItemCount(category, itemName)
                 if targetAmount > 0 and before >= targetAmount then
-                    State.AutoBuy.Message = "Da du: " .. itemName
+                    State.AutoBuy.Message = "Da Du: " .. itemName
                     break
                 end
                 pcall(function()
@@ -134,11 +134,11 @@ local function runAutoBuy()
                 task.wait(1.5)
                 local after = getItemCount(category, itemName)
                 if after <= before then
-                    State.AutoBuy.Message = "Het tien"
+                    State.AutoBuy.Message = "Het Tien"
                     break
                 end
                 State.AutoBuy.LastBought = itemName
-                State.AutoBuy.Message = "Da mua: " .. itemName
+                State.AutoBuy.Message = "Da Mua: " .. itemName
                 task.wait(0.5)
             end
         end
@@ -162,7 +162,7 @@ local function runAutoOpen()
     end
     if #itemsToOpen == 0 then
         State.AutoOpen.Current = "None"
-        State.AutoOpen.Message = "Mo xong"
+        State.AutoOpen.Message = "Mo Xong"
         return
     end
 
@@ -183,7 +183,7 @@ local function runAutoOpen()
         task.wait(1)
     end
     State.AutoOpen.Current = "None"
-    State.AutoOpen.Message = "Mo xong"
+    State.AutoOpen.Message = "Mo Xong"
 end
 
 local function runAutoNeonMega()
