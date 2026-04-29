@@ -1,0 +1,485 @@
+local g = getgenv()
+g.Config = g.Config or {}
+print("[a.lua] Script started")
+
+local function ensureSection(name, defaults)
+    if type(g.Config[name]) ~= "table" then
+        g.Config[name] = {}
+    end
+    for k, v in pairs(defaults) do
+        if g.Config[name][k] == nil then
+            g.Config[name][k] = v
+        end
+    end
+end
+
+ensureSection("AutoNeon", { Enabled = false, MakeNeon = true, MakeMega = true })
+ensureSection("AutoPotion", { Enabled = false, SelectedPets = {} })
+ensureSection("AutoBuy", { Enabled = false, SelectedItems = {}, BuyAmounts = {} })
+ensureSection("AutoOpen", { Enabled = false, Items = {} })
+
+repeat task.wait(0.5) until game:IsLoaded()
+
+local RS = game:GetService("ReplicatedStorage")
+local API = RS:WaitForChild("API")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local ClientData = require(RS.ClientModules.Core.ClientData)
+local RouterClient = require(RS.ClientModules.Core.RouterClient.RouterClient)
+
+local State = {
+    mainEnabled = false,
+    startupMessage = "Starting...",
+    AutoNeon = { Current = "None", Count = 0, MegaCount = 0 },
+    AutoPotion = { Current = "None", Message = "", Count = 0, Out = false },
+    AutoBuy = { LastBought = "None", Message = "" },
+    AutoOpen = { Current = "None", Message = "" }
+}
+
+local equipLock = false
+
+local function waitUntil(fn, timeout)
+    local t0 = os.clock()
+    while true do
+        local ok, done = pcall(fn)
+        if ok and done then return true end
+        if timeout and os.clock() - t0 >= timeout then return false end
+        task.wait(0.25)
+    end
+end
+
+local function normalizeList(raw)
+    if type(raw) == "table" then return raw end
+    if type(raw) == "string" then
+        local list = {}
+        for item in string.gmatch(raw, "[^,]+") do
+            local cleaned = string.gsub(item, "^%s+", "")
+            cleaned = string.gsub(cleaned, "%s+$", "")
+            if cleaned ~= "" then table.insert(list, cleaned) end
+        end
+        return list
+    end
+    return {}
+end
+
+local function getItemCount(category, kind)
+    local inventory = ClientData.get("inventory")
+    if not inventory or not inventory[category] then return 0 end
+    local count = 0
+    for _, info in pairs(inventory[category]) do
+        if info.kind == kind then count = count + 1 end
+    end
+    return count
+end
+
+local function getPetState(info)
+    local props = (info and info.properties) or {}
+    local isMega = props.mega_neon == true
+    local isNeon = props.neon == true
+    local age = tonumber(props.age or 1) or 1
+    return isMega, isNeon, age
+end
+
+local function dehash()
+    pcall(function()
+        local mapping = debug.getupvalue(RouterClient.init, 7)
+        for name, remote in pairs(mapping) do
+            if typeof(remote) == "Instance" then remote.Name = name end
+        end
+    end)
+end
+
+local function antiAFK()
+    local vu = game:GetService("VirtualUser")
+    LocalPlayer.Idled:Connect(function()
+        vu:CaptureController()
+        vu:ClickButton2(Vector2.new())
+    end)
+end
+
+local function enterGame()
+    pcall(function()
+        API:WaitForChild("TeamAPI/ChooseTeam"):InvokeServer("Parents", { source_for_logging = "intro_sequence" })
+        task.wait(1)
+        local ui = require(RS.Fsys).load("UIManager")
+        ui.set_app_visibility("MainMenuApp", false)
+        ui.set_app_visibility("NewsApp", false)
+        ui.set_app_visibility("DialogApp", false)
+        API:WaitForChild("DailyLoginAPI/ClaimDailyReward"):InvokeServer()
+        ui.set_app_visibility("DailyLoginApp", false)
+    end)
+end
+
+local function runAutoBuy()
+    local config = g.Config.AutoBuy
+    if not config or not config.Enabled then return end
+
+    local buyItems = normalizeList(config.SelectedItems)
+    local buyAmounts = config.BuyAmounts or {}
+    for i = 1, #buyItems do
+        local split = string.split(buyItems[i], "|")
+        local category = split[1]
+        local itemName = split[2]
+        local targetAmount = tonumber(buyAmounts[i]) or 0
+        if category and itemName then
+            while true do
+                local before = getItemCount(category, itemName)
+                if targetAmount > 0 and before >= targetAmount then
+                    State.AutoBuy.Message = "Da du: " .. itemName
+                    break
+                end
+                pcall(function()
+                    API:WaitForChild("ShopAPI/BuyItem"):InvokeServer(category, itemName, { buy_count = 1 })
+                end)
+                task.wait(1.5)
+                local after = getItemCount(category, itemName)
+                if after <= before then
+                    State.AutoBuy.Message = "Het tien"
+                    break
+                end
+                State.AutoBuy.LastBought = itemName
+                State.AutoBuy.Message = "Da mua: " .. itemName
+                task.wait(0.5)
+            end
+        end
+    end
+end
+
+local function runAutoOpen()
+    local config = g.Config.AutoOpen
+    if not config or not config.Enabled then return end
+
+    local allowedMap = {}
+    for _, item in ipairs(normalizeList(config.Items)) do allowedMap[item] = true end
+    local inventory = ClientData.get("inventory")
+    if not inventory or not inventory.gifts then return end
+
+    local itemsToOpen = {}
+    for id, info in pairs(inventory.gifts) do
+        if allowedMap[info.kind] then
+            table.insert(itemsToOpen, { id = id, kind = info.kind })
+        end
+    end
+    if #itemsToOpen == 0 then
+        State.AutoOpen.Current = "None"
+        State.AutoOpen.Message = "Mo xong"
+        return
+    end
+
+    for _, item in ipairs(itemsToOpen) do
+        State.AutoOpen.Current = item.kind
+        State.AutoOpen.Message = "Dang mo: " .. item.kind
+        while equipLock do task.wait(0.5) end
+        equipLock = true
+        pcall(function()
+            API:WaitForChild("ToolAPI/Equip"):InvokeServer(item.id, { use_sound_delay = true, equip_as_last = false })
+            API:WaitForChild("ToolAPI/ServerUseTool"):FireServer(item.id, "START")
+            task.wait(0.5)
+            API:WaitForChild("LootBoxAPI/ExchangeItemForReward"):InvokeServer(item.kind, item.id)
+            task.wait(0.2)
+            API:WaitForChild("ToolAPI/Unequip"):InvokeServer(item.id)
+        end)
+        equipLock = false
+        task.wait(1)
+    end
+    State.AutoOpen.Current = "None"
+    State.AutoOpen.Message = "Mo xong"
+end
+
+local function runAutoNeonMega()
+    local config = g.Config.AutoNeon
+    if not config or not config.Enabled then return end
+    local inventory = ClientData.get("inventory")
+    if not inventory or not inventory.pets then return end
+
+    local groups = {}
+    for id, info in pairs(inventory.pets) do
+        local isMega, isNeon, age = getPetState(info)
+        if age == 6 and not isMega then
+            if config.MakeNeon and not isNeon then
+                local k = (info.kind or "unknown") .. "|normal"
+                groups[k] = groups[k] or {}
+                table.insert(groups[k], id)
+            elseif config.MakeMega and isNeon then
+                local k = (info.kind or "unknown") .. "|neon"
+                groups[k] = groups[k] or {}
+                table.insert(groups[k], id)
+            end
+        end
+    end
+
+    for groupKey, ids in pairs(groups) do
+        local i = 1
+        while i + 3 <= #ids do
+            local mats = { ids[i], ids[i + 1], ids[i + 2], ids[i + 3] }
+            local success = pcall(function()
+                API:WaitForChild("PetAPI/DoNeonFusion"):InvokeServer(mats)
+            end)
+            if success then
+                if string.find(groupKey, "|neon") then
+                    State.AutoNeon.MegaCount = State.AutoNeon.MegaCount + 1
+                else
+                    State.AutoNeon.Count = State.AutoNeon.Count + 1
+                end
+                State.AutoNeon.Current = groupKey
+            end
+            i = i + 4
+            task.wait(1.5)
+        end
+    end
+end
+
+local PET_XP_DATA = {
+    common = 2500,
+    uncommon = 3600,
+    rare = 5400,
+    ultra_rare = 10700,
+    legendary = 18300
+}
+local POTION_XP_VALUE = 300
+
+local function getPetRarity(info)
+    return string.lower((info and info.rarity) or (info and info.pet_rarity) or "common")
+end
+
+local function runAutoPotion()
+    local config = g.Config.AutoPotion
+    if not config or not config.Enabled then return end
+    local inv = ClientData.get("inventory")
+    if not inv or not inv.pets then return end
+
+    local pots = {}
+    for id, info in pairs(inv.food or {}) do
+        if info.kind == "pet_age_potion" then table.insert(pots, id) end
+    end
+    State.AutoPotion.Count = #pots
+    if #pots == 0 then
+        State.AutoPotion.Out = true
+        State.AutoPotion.Message = "HET POTION"
+        State.AutoPotion.Current = "None"
+        return
+    end
+    State.AutoPotion.Out = false
+
+    local selected = normalizeList(config.SelectedPets)
+    local candidates = {}
+    for id, info in pairs(inv.pets) do
+        local props = info.properties or {}
+        local age = tonumber(props.age or 1)
+        if age < 6 and not props.mega_neon then
+            local priority = 999
+            for i, name in ipairs(selected) do
+                if name == info.kind then
+                    priority = i
+                    break
+                end
+            end
+            if priority ~= 999 or #selected == 0 then
+                table.insert(candidates, { id = id, kind = info.kind, priority = priority, xp = props.xp or 0 })
+            end
+        end
+    end
+    if #candidates == 0 then
+        State.AutoPotion.Current = "None"
+        State.AutoPotion.Message = "Khong co pet can up"
+        return
+    end
+    table.sort(candidates, function(a, b)
+        if a.priority ~= b.priority then return a.priority < b.priority end
+        return a.xp > b.xp
+    end)
+    local target = candidates[1]
+    State.AutoPotion.Current = target.kind
+    State.AutoPotion.Message = "Dang nang cap: " .. target.kind
+
+    pcall(function()
+        local targetInfo = inv.pets[target.id]
+        local rarity = getPetRarity(targetInfo)
+        local maxXP = PET_XP_DATA[rarity] or 2500
+        local currentXP = (targetInfo and targetInfo.properties and targetInfo.properties.xp) or target.xp or 0
+        local neededPotions = math.max(1, math.ceil((maxXP - currentXP) / POTION_XP_VALUE))
+        local batchSize = math.min(#pots, neededPotions)
+
+        local mainPotionId = pots[1]
+        local additional = {}
+        for i = 2, batchSize do
+            table.insert(additional, pots[i])
+        end
+
+        API:WaitForChild("ToolAPI/Equip"):InvokeServer(target.id)
+        task.wait(0.5)
+        API:WaitForChild("ToolAPI/Equip"):InvokeServer(mainPotionId, { use_sound_delay = false, equip_as_last = false })
+        task.wait(0.5)
+        API:WaitForChild("PetObjectAPI/CreatePetObject"):InvokeServer("__Enum_PetObjectCreatorType_2", {
+            additional_consume_uniques = additional,
+            pet_unique = target.id,
+            unique_id = mainPotionId
+        })
+        task.wait(0.5)
+        local petObjects = workspace:FindFirstChild("PetObjects")
+        local obj = petObjects and petObjects:FindFirstChild("AgePotion")
+        if obj then
+            API:WaitForChild("PetAPI/ConsumeFoodObject"):FireServer(obj, target.id)
+        end
+        State.AutoPotion.Message = "Da feed x" .. tostring(batchSize) .. ": " .. target.kind
+        task.wait(1)
+    end)
+end
+
+local function createGUI()
+    local pg = LocalPlayer:WaitForChild("PlayerGui")
+    local old = pg:FindFirstChild("A_MainGui")
+    if old then old:Destroy() end
+
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "A_MainGui"
+    gui.ResetOnSpawn = false
+    gui.Parent = pg
+
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.fromOffset(440, 330)
+    frame.Position = UDim2.new(0, 12, 0.5, -165)
+    frame.BackgroundColor3 = Color3.fromRGB(18, 20, 26)
+    frame.BorderSizePixel = 0
+    frame.Active = true
+    frame.Draggable = true
+    frame.Parent = gui
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 12)
+    local stroke = Instance.new("UIStroke", frame)
+    stroke.Thickness = 1.2
+    stroke.Color = Color3.fromRGB(70, 85, 130)
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, -16, 0, 30)
+    title.Position = UDim2.new(0, 8, 0, 8)
+    title.BackgroundTransparency = 1
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 15
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.TextColor3 = Color3.fromRGB(240, 244, 255)
+    title.Text = "🌺 cHÀO BẠN " .. LocalPlayer.Name
+    title.Parent = frame
+
+    local section = Instance.new("TextLabel")
+    section.Size = UDim2.new(1, -16, 0, 22)
+    section.Position = UDim2.new(0, 8, 0, 40)
+    section.BackgroundTransparency = 1
+    section.Font = Enum.Font.GothamSemibold
+    section.TextSize = 12
+    section.TextXAlignment = Enum.TextXAlignment.Left
+    section.TextColor3 = Color3.fromRGB(140, 165, 230)
+    section.Text = "LIVE STATUS | Main: STARTING"
+    section.Parent = frame
+
+    local holder = Instance.new("Frame")
+    holder.Size = UDim2.new(1, -16, 0, 180)
+    holder.Position = UDim2.new(0, 8, 0, 66)
+    holder.BackgroundTransparency = 1
+    holder.Parent = frame
+    local list = Instance.new("UIListLayout", holder)
+    list.Padding = UDim.new(0, 7)
+
+    local function mkRow()
+        local row = Instance.new("TextLabel")
+        row.Size = UDim2.new(1, 0, 0, 38)
+        row.BackgroundColor3 = Color3.fromRGB(25, 28, 36)
+        row.BorderSizePixel = 0
+        row.Font = Enum.Font.Gotham
+        row.TextSize = 12
+        row.TextXAlignment = Enum.TextXAlignment.Left
+        row.TextColor3 = Color3.fromRGB(225, 230, 244)
+        row.Text = ""
+        row.Parent = holder
+        Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+        return row
+    end
+
+    local LblNeon = mkRow()
+    local LblBuy = mkRow()
+    local LblOpen = mkRow()
+    local LblPotion = mkRow()
+
+    local function mkBtn(text, x, getter, setter)
+        local b = Instance.new("TextButton")
+        b.Size = UDim2.fromOffset(102, 32)
+        b.Position = UDim2.new(0, x, 1, -40)
+        b.BackgroundColor3 = Color3.fromRGB(34, 38, 48)
+        b.BorderSizePixel = 0
+        b.Font = Enum.Font.GothamSemibold
+        b.TextSize = 11
+        b.TextColor3 = Color3.fromRGB(238, 240, 248)
+        b.Parent = frame
+        Instance.new("UICorner", b).CornerRadius = UDim.new(0, 8)
+        local function repaint()
+            local on = getter()
+            b.Text = text .. " [" .. (on and "ON" or "OFF") .. "]"
+            b.BackgroundColor3 = on and Color3.fromRGB(33, 79, 53) or Color3.fromRGB(34, 38, 48)
+        end
+        repaint()
+        b.MouseButton1Click:Connect(function()
+            setter(not getter())
+            repaint()
+        end)
+    end
+
+    mkBtn("Neon", 8, function() return g.Config.AutoNeon.Enabled end, function(v) g.Config.AutoNeon.Enabled = v end)
+    mkBtn("Potion", 116, function() return g.Config.AutoPotion.Enabled end, function(v) g.Config.AutoPotion.Enabled = v end)
+    mkBtn("Buy", 224, function() return g.Config.AutoBuy.Enabled end, function(v) g.Config.AutoBuy.Enabled = v end)
+    mkBtn("Open", 332, function() return g.Config.AutoOpen.Enabled end, function(v) g.Config.AutoOpen.Enabled = v end)
+
+    task.spawn(function()
+        while gui.Parent do
+            local cfg = g.Config
+            section.Text = "LIVE STATUS | Main: " .. (State.mainEnabled and "RUNNING" or "STARTING")
+            LblNeon.Text = string.format("  Auto Neon [%s] | Neon: %d | Mega: %d", cfg.AutoNeon.Enabled and "ON" or "OFF", State.AutoNeon.Count, State.AutoNeon.MegaCount)
+            LblBuy.Text = string.format("  Auto Buy  [%s] | %s", cfg.AutoBuy.Enabled and "ON" or "OFF", State.AutoBuy.Message ~= "" and State.AutoBuy.Message or ("Da mua: " .. State.AutoBuy.LastBought))
+            LblOpen.Text = string.format("  Auto Open [%s] | %s", cfg.AutoOpen.Enabled and "ON" or "OFF", State.AutoOpen.Message ~= "" and State.AutoOpen.Message or ("Dang mo: " .. State.AutoOpen.Current))
+            LblPotion.Text = string.format("  Auto Potion [%s] | %s", cfg.AutoPotion.Enabled and "ON" or "OFF", State.AutoPotion.Out and "HET POTION" or ("So potion: " .. tostring(State.AutoPotion.Count)))
+            LblPotion.TextColor3 = State.AutoPotion.Out and Color3.fromRGB(255, 120, 120) or Color3.fromRGB(225, 230, 244)
+            task.wait(1)
+        end
+    end)
+end
+
+createGUI()
+print("[a.lua] GUI created")
+
+task.spawn(function()
+    dehash()
+    antiAFK()
+    State.startupMessage = "Startup running..."
+    for _ = 1, 3 do
+        enterGame()
+        task.wait(1.2)
+    end
+    State.mainEnabled = true
+    State.startupMessage = "Startup done"
+end)
+
+task.spawn(function()
+    while true do
+        if State.mainEnabled then pcall(runAutoBuy) end
+        task.wait(30)
+    end
+end)
+
+task.spawn(function()
+    while true do
+        if State.mainEnabled then pcall(runAutoOpen) end
+        task.wait(60)
+    end
+end)
+
+task.spawn(function()
+    while true do
+        if State.mainEnabled then pcall(runAutoNeonMega) end
+        task.wait(20)
+    end
+end)
+
+task.spawn(function()
+    while true do
+        if State.mainEnabled then pcall(runAutoPotion) end
+        task.wait(1)
+    end
+end)
