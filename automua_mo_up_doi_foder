@@ -4,13 +4,13 @@ getgenv().Config = {
         SelectedItems = {"summer_2026_acorn_box", "summer_2026_forest_sprite"},
     },
     MuaTheoSoluong = {
-        Enabled = true,
+        Enabled = false,
         SelectedItems = {"biggift"},
         BuyAmounts = {1},
     },
     TuMoBox = {
         Enabled = true,
-        Items = {"summer_2026_acorn_box", "biggift", "summer_2026_acorn_box"},
+        Items = {"summer_2026_acorn_box"},
     },
     AutoPotion = {
         Enabled = true,
