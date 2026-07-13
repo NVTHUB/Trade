@@ -1,11 +1,27 @@
-local g = getgenv()
-g.Config = {
+getgenv().Config = {
+    AutoMua = {
+        Enabled = true,
+        SelectedItems = {"summer_2026_acorn_box", "summer_2026_forest_sprite"},
+    },
+    MuaTheoSoluong = {
+        Enabled = false,
+        SelectedItems = {"biggift", "royal_egg"},
+        BuyAmounts = {6, 2},
+    },
+    TuMoBox = {
+        Enabled = true,
+        Items = {"summer_2026_acorn_box", "biggift", "summer_2026_acorn_box"},
+    },
+    AutoPotion = {
+        Enabled = true,
+        SelectedPets = {"basic_egg_2022_alicorn", "basic_egg_2022_ancient_dragon", "endangered_2026_blue_whale", "penguins_2025_dango_penguins", "sugarfest_2026_dark_choccybunny", "summer_2026_acorn_wizard", "pet_progression_2026_purrowl", "summer_2026_rainbow_trout", "Tealwood Monster", "endangered_2026_sea_turtle", "summer_2026_storm_condor", "sugarfest_2026_gumball_caterpillar", "star_rewards_2022_pomeranian", "sugarfest_2026_waffle_wyrm"}, 
+    },
     ["Folder_From"] = {"4645afb40ae17ba58a6eaa2786431dcd2d88c87efdb5657cf0218d37ac5318a9"},
     ["Folder_To"] = {"a279f977449c40742e504581457e95f78dd27c1dc518a5547701a79d7adf9a8d"},
 }
-print("[System] Khởi động Hub quản lý tiến trình...")
 
--- Đợi game tải xong hoàn toàn
+print("[System] Khởi động lại hệ thống Auto Potion chuẩn logic lô 4 con...")
+
 repeat task.wait(0.5) until game:IsLoaded()
 
 local RS = game:GetService("ReplicatedStorage")
@@ -13,11 +29,9 @@ local API = RS:WaitForChild("API")
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 
--- Load Modules hệ thống
 local ClientData = require(RS.ClientModules.Core.ClientData)
 local RouterClient = require(RS.ClientModules.Core.RouterClient.RouterClient)
 
--- Trạng thái hiển thị giao diện
 local State = {
     CurrentStep = "Khởi tạo",
     StatusMessage = "Đang chạy...",
@@ -28,25 +42,26 @@ local State = {
 
 local equipLock = false
 
--- =======================================================
--- TÍNH NĂNG BỔ SUNG: VÀO GAME SẠCH SẼ & ANTI-AFK
--- =======================================================
+local PET_XP_DATA = {
+    common = 2500,
+    uncommon = 3600,
+    rare = 5400,
+    ultra_rare = 10700,
+    legendary = 18300
+}
+local POTION_XP_VALUE = 300
+
 local function enterGameAndCleanUI()
     State.CurrentStep = "Khởi tạo hệ thống"
     State.StatusMessage = "Đang xử lý giao diện game..."
     pcall(function()
-        -- Chọn phe
         API:WaitForChild("TeamAPI/ChooseTeam"):InvokeServer("Parents", { source_for_logging = "intro_sequence" })
         task.wait(1)
-        
-        -- Tắt toàn bộ bảng thông báo rác
         local Fsys = require(RS:WaitForChild("Fsys"))
         local ui = Fsys.load("UIManager")
         ui.set_app_visibility("MainMenuApp", false)
         ui.set_app_visibility("NewsApp", false)
         ui.set_app_visibility("DialogApp", false)
-        
-        -- Nhận quà hàng ngày
         API:WaitForChild("DailyLoginAPI/ClaimDailyReward"):InvokeServer()
     end)
 end
@@ -61,7 +76,6 @@ local function keepAliveAntiAfk()
     end)
 end
 
--- Giải mã Remotes Name (Dehash)
 local function dehash()
     pcall(function()
         local mapping = debug.getupvalue(RouterClient.init, 7)
@@ -71,321 +85,333 @@ local function dehash()
     end)
 end
 
--- Hàm lấy hòm đồ hiện tại
 local function getInventory()
     return ClientData.get("inventory") or {}
 end
 
--- Đếm số lượng box cụ thể đang có trong túi đồ
-local function getBoxCount()
+-- TỐI ƯU: Quét toàn bộ hòm đồ để không sót bất kỳ danh mục nào (Gifts, Vạn vật)
+local function checkItemCount(itemName)
     local inv = getInventory()
     local count = 0
-    if inv.gifts then
-        for _, info in pairs(inv.gifts) do
-            if info.kind == "summer_2026_acorn_box" then
-                count = count + 1
-            end
-        end
-    end
-    State.BoxCount = count
-    return count
-end
-
-local function waitForBoxCountBelow(countBefore, timeout)
-    local startTime = os.clock()
-    while os.clock() - startTime < timeout do
-        local currentCount = getBoxCount()
-        if currentCount < countBefore then
-            return true, currentCount
-        end
-        task.wait(0.15)
-    end
-    return false, getBoxCount()
-end
-
--- =======================================================
--- BƯỚC 1: MUA TỪNG BOX CHÉC KHO (LOGIC MỚI)
--- =======================================================
-local function doAutoBuy()
-    State.CurrentStep = "BƯỚC 1: MUA BOX"
-    print("[Bước 1] Bắt đầu mua từng box và theo dõi kho đồ...")
-    
-    local failCount = 0
-    
-    while true do
-        local countBefore = getBoxCount()
-        
-        -- Gửi lệnh mua 1 box
-        pcall(function()
-            API:WaitForChild("ShopAPI/BuyItem"):InvokeServer("gifts", "summer_2026_acorn_box", { buy_count = 1 })
-        end)
-        task.wait(1.2) -- Đợi server đồng bộ dữ liệu kho đồ
-        
-        local countAfter = getBoxCount()
-        
-        -- Nếu số lượng box không tăng lên sau khi mua
-        if countAfter <= countBefore then
-            failCount = failCount + 1
-            State.StatusMessage = string.format("Mua không tăng (%d/2). Thử lại...", failCount)
-            print("[Kiểm tra] Số lượng box không tăng. Thử lại lần: " .. failCount)
-        else
-            failCount = 0 -- Reset nếu mua thành công
-            State.StatusMessage = "Mua thành công 1 Box. Tiếp tục..."
-        end
-        
-        -- Nếu 2 lần liên tiếp số lượng không đổi -> Coi như hết tiền hoặc lỗi
-        if failCount >= 2 then
-            print("[Bước 1] Xác nhận đã hết Acorns hoặc lỗi mua liên tiếp. Dừng mua.")
-            State.StatusMessage = "Hết tiền hoặc lỗi mua. Chuyển bước!"
-            break
-        end
-        
-        task.wait(0.3)
-    end
-end
-
--- =======================================================
--- BƯỚC 2: MỞ TOÀN BỘ BOX CHO ĐẾN KHI TRỐNG TÚI
--- =======================================================
-local function doAutoOpen()
-    local failedOpenCount = 0
-    State.CurrentStep = "BƯỚC 2: MỞ BOX"
-    print("[Bước 2] Bắt đầu tiến trình mở sạch box trong túi...")
-    
-    while true do
-        local inv = getInventory()
-        local boxId = nil
-        
-        if inv.gifts then
-            for id, info in pairs(inv.gifts) do
-                if info.kind == "summer_2026_acorn_box" then
-                    boxId = id
-                    break
+    for category, items in pairs(inv) do
+        if type(items) == "table" then
+            for _, info in pairs(items) do
+                if type(info) == "table" and info.kind == itemName then 
+                    count = count + 1 
                 end
             end
         end
-        
-        -- Nếu không tìm thấy bất kỳ ID box nào nữa -> Đã mở xong
-        if not boxId then
-            print("[Bước 2] Đã mở toàn bộ box thành công.")
-            State.StatusMessage = "Đã mở hết sạch Box!"
-            break
+    end
+    return count
+end
+
+local function updateBoxStats()
+    local inv = getInventory()
+    local totalBoxes = 0
+    local allowedItems = getgenv().Config.TuMoBox.Items or {}
+    local allowedMap = {}
+    for _, v in ipairs(allowedItems) do allowedMap[v] = true end
+    
+    if inv.gifts then
+        for _, info in pairs(inv.gifts) do
+            if allowedMap[info.kind] then totalBoxes = totalBoxes + 1 end
         end
+    end
+    State.BoxCount = totalBoxes
+    return totalBoxes
+end
+
+-- TỐI ƯU: Nhận diện chính xác mục tiêu mua thuộc danh mục nào dựa trên cấu trúc game, mặc định thông minh là gifts nếu tên có chứa "box" hoặc "gift"
+local function detectCategory(itemName)
+    local inv = getInventory()
+    for category, items in pairs(inv) do
+        if type(items) == "table" then
+            for _, info in pairs(items) do
+                if type(info) == "table" and info.kind == itemName then 
+                    return category 
+                end
+            end
+        end
+    end
+    
+    -- Nếu item chưa có sẵn trong người để quét, tự động phân loại thông minh bằng text tên
+    local lowerName = string.lower(itemName)
+    if string.find(lowerName, "box") or string.find(lowerName, "gift") or string.find(lowerName, "egg") then
+        return "gifts"
+    end
+    return "pets"
+end
+
+local function getPotionIds()
+    local inv = getInventory()
+    local pots = {}
+    if inv.food then
+        for id, info in pairs(inv.food) do
+            if info.kind == "pet_age_potion" then table.insert(pots, id) end
+        end
+    end
+    State.PotionCount = #pots
+    return pots
+end
+
+local function feedPotionToPet(petId, neededPotions)
+    local pots = getPotionIds()
+    if #pots == 0 or neededPotions <= 0 then return false end
+    
+    local batchSize = math.min(#pots, neededPotions)
+    local mainPotionId = pots[1]
+    local additional = {}
+    for i = 2, batchSize do table.insert(additional, pots[i]) end
+
+    local success = pcall(function()
+        API:WaitForChild("ToolAPI/Equip"):InvokeServer(petId)
+        task.wait(0.3)
+        API:WaitForChild("ToolAPI/Equip"):InvokeServer(mainPotionId, { use_sound_delay = false, equip_as_last = false })
+        task.wait(0.3)
+        API:WaitForChild("PetObjectAPI/CreatePetObject"):InvokeServer("__Enum_PetObjectCreatorType_2", {
+            additional_consume_uniques = additional,
+            pet_unique = petId,
+            unique_id = mainPotionId
+        })
+        task.wait(0.3)
+        local petObjects = workspace:FindFirstChild("PetObjects")
+        local obj = petObjects and petObjects:FindFirstChild("AgePotion")
+        if obj then API:WaitForChild("PetAPI/ConsumeFoodObject"):FireServer(obj, petId) end
+    end)
+    task.wait(1.2)
+    return success
+end
+
+local function doAutoBuy()
+    if not (getgenv().Config.AutoMua and getgenv().Config.AutoMua.Enabled) then return end
+    State.CurrentStep = "BƯỚC 1: AUTO MUA"
+    local items = getgenv().Config.AutoMua.SelectedItems or {}
+    
+    for _, itemName in ipairs(items) do
+        local category = detectCategory(itemName)
+        local failCount = 0
+        while true do
+            local before = checkItemCount(itemName)
+            State.StatusMessage = string.format("Đang mua [%s]: %s", category, itemName)
+            pcall(function()
+                API:WaitForChild("ShopAPI/BuyItem"):InvokeServer(category, itemName, { buy_count = 1 })
+            end)
+            task.wait(1.5) -- Đúc kết độ trễ an toàn để server cộng quà vào túi
+            
+            local after = checkItemCount(itemName)
+            if after <= before then 
+                failCount = failCount + 1 
+            else 
+                failCount = 0 
+            end
+            
+            if failCount >= 3 then 
+                print("[Shop] Dừng mua do số lượng không tăng hoặc hết tiền.")
+                break 
+            end
+            task.wait(0.3)
+        end
+    end
+end
+
+local function doBuyByAmount()
+    if not (getgenv().Config.MuaTheoSoluong and getgenv().Config.MuaTheoSoluong.Enabled) then return end
+    State.CurrentStep = "BƯỚC 2: MUA THEO SỐ LƯỢNG"
+    local items = getgenv().Config.MuaTheoSoluong.SelectedItems or {}
+    local amounts = getgenv().Config.MuaTheoSoluong.BuyAmounts or {}
+    
+    for i, itemName in ipairs(items) do
+        local targetAmount = tonumber(amounts[i]) or 0
+        if targetAmount > 0 then
+            local category = detectCategory(itemName)
+            local failCount = 0
+            while checkItemCount(itemName) < targetAmount do
+                local before = checkItemCount(itemName)
+                State.StatusMessage = string.format("Mua %s: %d/%d", itemName, before, targetAmount)
+                pcall(function()
+                    API:WaitForChild("ShopAPI/BuyItem"):InvokeServer(category, itemName, { buy_count = 1 })
+                end)
+                task.wait(1.5)
+                
+                if checkItemCount(itemName) <= before then
+                    failCount = failCount + 1
+                    if failCount >= 3 then break end
+                else
+                    failCount = 0
+                end
+            end
+        end
+    end
+end
+
+local function doAutoOpen()
+    if not (getgenv().Config.TuMoBox and getgenv().Config.TuMoBox.Enabled) then return end
+    State.CurrentStep = "BƯỚC 3: MỞ HỘP"
+    local allowedItems = getgenv().Config.TuMoBox.Items or {}
+    local allowedMap = {}
+    for _, v in ipairs(allowedItems) do allowedMap[v] = true end
+    
+    while true do
+        updateBoxStats()
+        local inv = getInventory()
+        local boxId, boxKind = nil, nil
+        if inv.gifts then
+            for id, info in pairs(inv.gifts) do
+                if allowedMap[info.kind] then boxId, boxKind = id, info.kind; break end
+            end
+        end
+        if not boxId then break end
         
-        local countBefore = getBoxCount()
-        State.StatusMessage = string.format("Check box truoc khi mo: %d", countBefore)
-        print("[Step 2] Box before open:", countBefore, "Box ID:", boxId)
         while equipLock do task.wait(0.5) end
         equipLock = true
-        local ok, err = pcall(function()
-            State.StatusMessage = "Dang equip Box ID: " .. string.sub(boxId, 1, 6)
+        pcall(function()
             API:WaitForChild("ToolAPI/Equip"):InvokeServer(boxId, { use_sound_delay = true, equip_as_last = false })
             task.wait(0.25)
-            State.StatusMessage = "Dang xac nhan mo Box..."
             API:WaitForChild("ToolAPI/ServerUseTool"):InvokeServer(boxId, "START")
             task.wait(0.35)
             API:WaitForChild("ToolAPI/Unequip"):InvokeServer(boxId)
             task.wait(0.1)
             API:WaitForChild("ToolAPI/ServerUseTool"):InvokeServer(boxId, "END")
             task.wait(0.1)
-            API:WaitForChild("LootBoxAPI/ExchangeItemForReward"):InvokeServer("summer_2026_acorn_box", boxId)
+            API:WaitForChild("LootBoxAPI/ExchangeItemForReward"):InvokeServer(boxKind, boxId)
         end)
         equipLock = false
-        local opened, countAfter = waitForBoxCountBelow(countBefore, 2)
-        print("[Step 2] Box after open:", countAfter, "Opened:", opened)
-        if not ok or not opened then
-            failedOpenCount = failedOpenCount + 1
-            State.StatusMessage = string.format("Open box failed (%d/3). Retrying...", failedOpenCount)
-            print("[Step 2] Open box failed:", err or "Box count did not decrease")
-            if failedOpenCount >= 3 then
-                State.StatusMessage = "Open box failed 3 times. Stop to avoid loop."
-                break
-            end
-        else
-            failedOpenCount = 0
-        end
-        
-        getBoxCount() -- Cập nhật số lượng lên UI
-        task.wait(0.15)
+        task.wait(1.5)
     end
 end
 
--- =======================================================
--- BƯỚC 3: UP POTION VÀ LAI TẠO NEON FULL TUỔI (LOGIC CŨ)
--- =======================================================
-local function doAutoFusionAndPotion()
-    State.CurrentStep = "BƯỚC 3: UP POTION & NEON"
-    print("[Bước 3] Tiến hành kiểm tra và nâng cấp Wizard...")
+local function doAutoPotionAndFusion()
+    if not (getgenv().Config.AutoPotion and getgenv().Config.AutoPotion.Enabled) then 
+        State.CurrentStep = "BƯỚC 4: AUTO POTION"
+        State.StatusMessage = "Bỏ qua (Disabled)" 
+        return 
+    end
+
+    State.CurrentStep = "BƯỚC 4: AUTO POTION"
+    local selectedPets = getgenv().Config.AutoPotion.SelectedPets or {}
     
-    while true do
-        local inv = getInventory()
+    for _, targetKind in ipairs(selectedPets) do
+        local currentPetLoop = true
         
-        local potions = {}
-        if inv.food then
-            for id, info in pairs(inv.food) do
-                if info.kind == "pet_age_potion" then table.insert(potions, id) end
-            end
-        end
-        State.PotionCount = #potions
-        
-        local normalWizards = {}
-        local neonWizards = {}
-        
-        if inv.pets then
+        while currentPetLoop do
+            task.wait(0.5)
+            local inv = getInventory()
+            if not inv or not inv.pets then break end
+            
+            local normalPets = {}
+            local neonNotFull = {}
+            local neonFull = {}
+            local sampleInfo = nil
+
             for id, info in pairs(inv.pets) do
-                if info.kind == "summer_2026_acorn_wizard" then
+                if info.kind == targetKind then
+                    if not sampleInfo then sampleInfo = info end
                     local props = info.properties or {}
                     local age = tonumber(props.age or 1) or 1
-                    local isMega = props.mega_neon == true
                     local isNeon = props.neon == true
-                    
+                    local isMega = props.mega_neon == true
+
                     if not isMega then
                         if isNeon then
-                            if age < 6 then table.insert(neonWizards, { id = id, age = age }) end
+                            if age == 6 then 
+                                table.insert(neonFull, id) 
+                            else 
+                                table.insert(neonNotFull, {id = id, xp = props.xp or 0, info = info}) 
+                            end
                         else
-                            table.insert(normalWizards, { id = id, age = age })
+                            if age < 6 then 
+                                table.insert(normalPets, {id = id, xp = props.xp or 0, info = info}) 
+                            end
                         end
                     end
                 end
             end
-        end
-        
-        table.sort(normalWizards, function(a,b) return a.age > b.age end)
-        table.sort(neonWizards, function(a,b) return a.age > b.age end)
-        
-        -- ĐIỀU KIỆN 1: Nuôi nốt Neon chưa max tuổi
-        if #neonWizards > 0 and #potions >= 7 then
-            local targetNeon = neonWizards[1]
-            local needed = 6 - targetNeon.age
-            if needed > 0 and #potions >= needed then
-                State.StatusMessage = "Đang đập thuốc cho Neon Wizard..."
-                pcall(function()
-                    API:WaitForChild("ToolAPI/Equip"):InvokeServer(targetNeon.id)
-                    task.wait(0.3)
-                    for k = 1, needed do
-                        local potId = potions[k]
-                        API:WaitForChild("ToolAPI/Equip"):InvokeServer(potId, { use_sound_delay = false, equip_as_last = false })
-                        task.wait(0.3)
-                        API:WaitForChild("PetObjectAPI/CreatePetObject"):InvokeServer("__Enum_PetObjectCreatorType_2", {
-                            additional_consume_uniques = {}, pet_unique = targetNeon.id, unique_id = potId
-                        })
-                        task.wait(0.3)
-                        local petObjects = workspace:FindFirstChild("PetObjects")
-                        local obj = petObjects and petObjects:FindFirstChild("AgePotion")
-                        if obj then API:WaitForChild("PetAPI/ConsumeFoodObject"):FireServer(obj, targetNeon.id) end
-                        task.wait(0.4)
-                    end
-                end)
-                task.wait(1)
-                continue
-            end
-        end
-        
-        -- ĐIỀU KIỆN 2: Gom đủ 4 con thường + trọn gói thuốc để lên thẳng Neon Max Tuổi
-        if #normalWizards >= 4 then
-            local tempNeededPotions = 0
-            local mats = {}
-            for idx = 1, 4 do
-                table.insert(mats, normalWizards[idx].id)
-                tempNeededPotions = tempNeededPotions + (6 - normalWizards[idx].age)
-            end
-            tempNeededPotions = tempNeededPotions + 7
-            
-            if #potions >= tempNeededPotions then
-                State.StatusMessage = "Đủ điều kiện! Đang up max 4 pet thường..."
-                for idx = 1, 4 do
-                    local petId = normalWizards[idx].id
-                    local currentAge = normalWizards[idx].age
-                    local pNeeded = 6 - currentAge
-                    
-                    if pNeeded > 0 then
-                        pcall(function()
-                            API:WaitForChild("ToolAPI/Equip"):InvokeServer(petId)
-                            task.wait(0.3)
-                            for k = 1, pNeeded do
-                                local potId = table.remove(potions, 1)
-                                API:WaitForChild("ToolAPI/Equip"):InvokeServer(potId, { use_sound_delay = false, equip_as_last = false })
-                                task.wait(0.3)
-                                API:WaitForChild("PetObjectAPI/CreatePetObject"):InvokeServer("__Enum_PetObjectCreatorType_2", {
-                                    additional_consume_uniques = {}, pet_unique = petId, unique_id = potId
-                                })
-                                task.wait(0.3)
-                                local petObjects = workspace:FindFirstChild("PetObjects")
-                                local obj = petObjects and petObjects:FindFirstChild("AgePotion")
-                                if obj then API:WaitForChild("PetAPI/ConsumeFoodObject"):FireServer(obj, petId) end
-                                task.wait(0.4)
-                            end
-                        end)
-                    end
+
+            local rarity = sampleInfo and string.lower(sampleInfo.rarity or sampleInfo.pet_rarity or "common") or "common"
+            local maxXP = PET_XP_DATA[rarity] or 2500
+            local neonMaxPotsNeeded = math.ceil(maxXP / POTION_XP_VALUE)
+
+            if #neonNotFull > 0 then
+                table.sort(neonNotFull, function(a, b) return a.xp > b.xp end)
+                local targetNeon = neonNotFull[1]
+                local currentPots = getPotionIds()
+                local neededPotions = math.max(1, math.ceil((maxXP - targetNeon.xp) / POTION_XP_VALUE))
+                
+                if #currentPots >= neededPotions then
+                    State.StatusMessage = string.format("[%s] Bơm thuốc Neon dở lên Full (%d viên)", targetKind, neededPotions)
+                    feedPotionToPet(targetNeon.id, neededPotions)
+                else
+                    State.StatusMessage = string.format("[%s] Không đủ thuốc up Neon sẵn (%d/%d v). Đổi pet...", targetKind, #currentPots, neededPotions)
+                    currentPetLoop = false 
+                end
+
+            elseif #normalPets >= 4 then
+                table.sort(normalPets, function(a, b) return a.xp > b.xp end)
+                local batch = {normalPets[1], normalPets[2], normalPets[3], normalPets[4]}
+                
+                local totalNormalPotsNeeded = 0
+                for _, pData in ipairs(batch) do
+                    totalNormalPotsNeeded = totalNormalPotsNeeded + math.max(1, math.ceil((maxXP - pData.xp) / POTION_XP_VALUE))
                 end
                 
-                State.StatusMessage = "Đang tiến hành hợp thể DoNeonFusion..."
-                pcall(function()
-                    API:WaitForChild("PetAPI/DoNeonFusion"):InvokeServer(mats)
-                end)
-                State.NeonCount = State.NeonCount + 1
-                task.wait(2)
-                continue
+                local totalRequired = totalNormalPotsNeeded + neonMaxPotsNeeded
+                local currentPots = getPotionIds()
+                
+                if #currentPots >= totalRequired then
+                    State.StatusMessage = string.format("[%s] Đủ thuốc trọn gói (%d v). Bơm 4 con thường...", targetKind, totalRequired)
+                    
+                    for _, pData in ipairs(batch) do
+                        local needed = math.max(1, math.ceil((maxXP - pData.xp) / POTION_XP_VALUE))
+                        feedPotionToPet(pData.id, needed)
+                    end
+                    
+                    State.StatusMessage = "⚡ Đang ghép 4 con thường lên NEON..."
+                    local mats = {batch[1].id, batch[2].id, batch[3].id, batch[4].id}
+                    pcall(function()
+                        API:WaitForChild("PetAPI/DoNeonFusion"):InvokeServer(mats)
+                    end)
+                    State.NeonCount = State.NeonCount + 1
+                    task.wait(2.5) 
+                else
+                    State.StatusMessage = string.format("[%s] Thiếu thuốc gói lô thường (%d/%d v). Đổi pet...", targetKind, #currentPots, totalRequired)
+                    currentPetLoop = false 
+                end
+            else
+                State.StatusMessage = string.format("[%s] Không đủ điều kiện nuôi tiếp. Đổi pet...", targetKind)
+                currentPetLoop = false 
             end
         end
-        
-        State.StatusMessage = "Hoàn thành nâng cấp tối đa."
-        print("[Bước 3] Hoàn tất quá trình nâng cấp tối đa.")
-        break
     end
+    State.StatusMessage = "Hoàn thành toàn bộ danh sách Pet!"
 end
 
--- =======================================================
--- BƯỚC 4: CHỜ 1 PHÚT RỒI ĐỔI FOLDER
--- =======================================================
 local function doChangeFolder()
-    State.CurrentStep = "BƯỚC 4: CHỜ & ĐỔI ACC"
-    State.StatusMessage = "Đang chờ 60 giây trước khi đổi folder..."
-    print("[Bước 4] Bắt đầu chờ 60 giây trước khi đổi folder...")
-
-    -- Đếm ngược chờ đúng 1 phút (60 giây) trước khi đổi Folder
+    State.CurrentStep = "BƯỚC 5: ĐỔI ACC (FOLDER)"
+    print("[Bước 5] Đợi 60 giây trước khi chạy tính năng chuyển folder...")
     for timeLeft = 60, 1, -1 do
-        State.StatusMessage = string.format("Đổi Folder sau %ds...", timeLeft)
+        State.StatusMessage = string.format("Sẽ đổi Folder sau %ds...", timeLeft)
         task.wait(1)
     end
-
-    -- Tiến hành đổi Folder sang tài khoản kế tiếp
-    State.StatusMessage = "Đang gởi lệnh ChangeToFolder..."
-    local folderFrom = g.Config and g.Config["Folder_From"] and g.Config["Folder_From"][1]
-    local folderTo = g.Config and g.Config["Folder_To"] and g.Config["Folder_To"][1]
+    State.StatusMessage = "Đang gửi lệnh ChangeToFolder..."
+    local folderFrom = getgenv().Config["Folder_From"] and getgenv().Config["Folder_From"][1]
+    local toFolder = getgenv().Config["Folder_To"] and getgenv().Config["Folder_To"][1]
     local folderClient = rawget(getgenv(), "client")
 
-    if folderFrom and folderTo and folderClient and type(folderClient.ChangeToFolder) == "function" then
-        local ok, err = pcall(function()
-            folderClient:ChangeToFolder(
-                folderFrom,
-                folderTo,
-                false,
-                nil
-            )
-        end)
-        if ok then
-            State.StatusMessage = "Đổi tài khoản thành công!"
-        else
-            State.StatusMessage = "Lỗi khi đổi folder"
-            warn("[Lỗi] ChangeToFolder thất bại:", err)
-        end
+    if folderFrom and toFolder and folderClient and type(folderClient.ChangeToFolder) == "function" then
+        pcall(function() folderClient:ChangeToFolder(folderFrom, toFolder, false, nil) end)
+        State.StatusMessage = "Đổi Folder thành công!"
     else
-        State.StatusMessage = "Lỗi: Thiếu cấu hình Folder!"
-        warn("[Lỗi] Không đổi được folder: Thiếu cấu hình Folder hoặc thiếu client đổi folder")
+        State.StatusMessage = "Lỗi cấu hình Folder/Client!"
     end
 end
 
--- =======================================================
--- THIẾT KẾ GIAO DIỆN HỒNG CỦA TUYỀN (GUI LIVE STATUS)
--- =======================================================
 local function createGUI()
     local pg = LocalPlayer:WaitForChild("PlayerGui")
-    local old = pg:FindFirstChild("A_EventGui")
+    local old = pg:FindFirstChild("A_MainOverlayGui")
     if old then old:Destroy() end
 
     local gui = Instance.new("ScreenGui")
-    gui.Name = "A_EventGui"
+    gui.Name = "A_MainOverlayGui"
     gui.ResetOnSpawn = false
     gui.Parent = pg
 
@@ -401,7 +427,7 @@ local function createGUI()
     
     local stroke = Instance.new("UIStroke", frame)
     stroke.Thickness = 1.5
-    stroke.Color = Color3.fromRGB(230, 110, 160) -- Màu hồng viền sang xịn mịn
+    stroke.Color = Color3.fromRGB(230, 110, 160)
 
     local title = Instance.new("TextLabel")
     title.Size = UDim2.new(1, -16, 0, 35)
@@ -411,7 +437,7 @@ local function createGUI()
     title.TextSize = 15
     title.TextXAlignment = Enum.TextXAlignment.Left
     title.TextColor3 = Color3.fromRGB(255, 240, 245)
-    title.Text = "🌺 HUB OF TUYEN | AUTOMATION EVENT ❤️"
+    title.Text = "🌺 HUB OF TUYEN | AUTOMATION SYSTEM V3 ❤️"
     title.Parent = frame
 
     local holder = Instance.new("Frame")
@@ -440,40 +466,40 @@ local function createGUI()
 
     local lblStep = mkRow("Tiến trình: Khởi tạo", Color3.fromRGB(255, 180, 200))
     local lblStatus = mkRow("Trạng thái: Đang chờ...", Color3.fromRGB(200, 220, 255))
-    local lblStats = mkRow("Kho đồ: 🔄 Đang quét dữ liệu...", Color3.fromRGB(240, 240, 240))
+    local lblStats = mkRow("Kho đồ: Quét dữ liệu...", Color3.fromRGB(240, 240, 240))
 
-    -- Vòng lặp cập nhật dữ liệu liên tục lên giao diện
     task.spawn(function()
         while gui.Parent do
             lblStep.Text = "  📌 Tiến trình: " .. State.CurrentStep
             lblStatus.Text = "  ⚡ Trạng thái: " .. State.StatusMessage
-            lblStats.Text = string.format("  📦 Trong túi: %d Box | %d Potion | Đã tạo: %d Neon", State.BoxCount, State.PotionCount, State.NeonCount)
-            task.wait(0.5)
+            lblStats.Text = string.format("  📦 Trong túi: %d Box còn lại | %d Potion | Đã tạo: %d Tiến hóa", State.BoxCount, State.PotionCount, State.NeonCount)
+            task.wait(0.4)
         end
     end)
 end
 
--- =======================================================
--- KÍCH HOẠT VÒNG CHẠY TUẦN TỰ NỐI ĐUÔI CHÍNH XÁC
--- =======================================================
 createGUI()
 keepAliveAntiAfk()
 enterGameAndCleanUI()
 dehash()
 
 task.spawn(function()
-    State.StatusMessage = "Đợi hệ thống ổn định hòm đồ (5s)..."
+    State.StatusMessage = "Đợi hệ thống ổn định dữ liệu (5s)..."
     task.wait(5)
+    getPotionIds()
+    updateBoxStats()
     
-    -- Chạy tuần tự các bước liên kết mạch lạc
     doAutoBuy()
-    task.wait(1.5)
+    task.wait(0.5)
+    
+    doBuyByAmount()
+    task.wait(0.5)
     
     doAutoOpen()
-    task.wait(1.5)
+    task.wait(0.5)
     
-    doAutoFusionAndPotion()
-    task.wait(1.5)
+    doAutoPotionAndFusion()
+    task.wait(0.5)
     
     doChangeFolder()
 end)
