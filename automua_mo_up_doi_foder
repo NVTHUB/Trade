@@ -1,7 +1,7 @@
 local g = getgenv()
 g.Config = {
     ["Folder_From"] = {"4645afb40ae17ba58a6eaa2786431dcd2d88c87efdb5657cf0218d37ac5318a9"},
-    ["Folder_To"] = {"8e2f9788ebc6ecc1ff7db50cc27ed7820b984e06e5ae739f5b50179cdc24bf42"},
+    ["Folder_To"] = {"a279f977449c40742e504581457e95f78dd27c1dc518a5547701a79d7adf9a8d"},
 }
 print("[System] Khởi động Hub quản lý tiến trình...")
 
