@@ -4,9 +4,9 @@ getgenv().Config = {
         SelectedItems = {"summer_2026_acorn_box", "summer_2026_forest_sprite"},
     },
     MuaTheoSoluong = {
-        Enabled = false,
-        SelectedItems = {"biggift", "royal_egg"},
-        BuyAmounts = {6, 2},
+        Enabled = true,
+        SelectedItems = {"biggift"},
+        BuyAmounts = {1},
     },
     TuMoBox = {
         Enabled = true,
