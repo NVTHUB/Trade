@@ -196,7 +196,7 @@ local function doAutoBuy()
             pcall(function()
                 API:WaitForChild("ShopAPI/BuyItem"):InvokeServer(category, itemName, { buy_count = 1 })
             end)
-            task.wait(1.5) -- Đúc kết độ trễ an toàn để server cộng quà vào túi
+            task.wait(0.5) -- Đúc kết độ trễ an toàn để server cộng quà vào túi
             
             local after = checkItemCount(itemName)
             if after <= before then 
@@ -231,7 +231,7 @@ local function doBuyByAmount()
                 pcall(function()
                     API:WaitForChild("ShopAPI/BuyItem"):InvokeServer(category, itemName, { buy_count = 1 })
                 end)
-                task.wait(1.5)
+                task.wait(0.5)
                 
                 if checkItemCount(itemName) <= before then
                     failCount = failCount + 1
