@@ -14,7 +14,7 @@ getgenv().Config = {
     },
     AutoPotion = {
         Enabled = true,
-        SelectedPets = {"basic_egg_2022_alicorn", "basic_egg_2022_ancient_dragon", "endangered_2026_blue_whale", "penguins_2025_dango_penguins", "sugarfest_2026_dark_choccybunny", "summer_2026_acorn_wizard", "pet_progression_2026_purrowl", "summer_2026_rainbow_trout", "Tealwood Monster", "endangered_2026_sea_turtle", "summer_2026_storm_condor", "sugarfest_2026_gumball_caterpillar", "star_rewards_2022_pomeranian", "sugarfest_2026_waffle_wyrm"}, 
+        SelectedPets = {"basic_egg_2022_alicorn", "basic_egg_2022_ancient_dragon", "endangered_2026_blue_whale", "penguins_2025_dango_penguins", "sugarfest_2026_dark_choccybunny", "summer_2026_acorn_wizard", "pet_progression_2026_purrowl", "endangered_2026_sea_turtle", "summer_2026_storm_condor", "sugarfest_2026_gumball_caterpillar", "star_rewards_2022_pomeranian", "sugarfest_2026_waffle_wyrm"}, 
     },
     ["Folder_From"] = {"4645afb40ae17ba58a6eaa2786431dcd2d88c87efdb5657cf0218d37ac5318a9"},
     ["Folder_To"] = {"a279f977449c40742e504581457e95f78dd27c1dc518a5547701a79d7adf9a8d"},
