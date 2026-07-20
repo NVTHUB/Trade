@@ -1,7 +1,7 @@
 getgenv().Config = {
     AutoMua = {
         Enabled = true,
-        SelectedItems = {"summer_2026_storm_condor", "summer_2026_irish_setter", "summer_2026_acorn_box", "summer_2026_forest_sprite"},
+        SelectedItems = {"summer_2026_river_otter", "summer_2026_ruddy_duck", "summer_2026_acorn_box", "summer_2026_forest_sprite"},
     },
     MuaTheoSoluong = {
         Enabled = false,
