@@ -105,7 +105,6 @@ local function enterGame()
         ui.set_app_visibility("MainMenuApp", false)
         ui.set_app_visibility("NewsApp", false)
         ui.set_app_visibility("DialogApp", false)
-        API:WaitForChild("DailyLoginAPI/ClaimDailyReward"):InvokeServer()
         ui.set_app_visibility("DailyLoginApp", false)
     end)
 end
